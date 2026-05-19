@@ -1,0 +1,3 @@
+- [x] Fix hardhat compile issues (HHE3, then HHE302) by disabling typechain temporarily
+- [x] Run `npx hardhat compile` from `contracts/`
+- [x] Verify contracts are discovered and compilation succeeds

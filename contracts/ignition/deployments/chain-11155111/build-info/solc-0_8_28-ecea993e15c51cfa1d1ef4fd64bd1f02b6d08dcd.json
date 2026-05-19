@@ -1,0 +1,49 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-ecea993e15c51cfa1d1ef4fd64bd1f02b6d08dcd",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.4.5"
+  },
+  "userSourceNameMap": {
+    "contracts/DocVaultStorage.sol": "project/contracts/DocVaultStorage.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/DocVaultStorage.sol": {
+        "content": "pragma solidity ^0.8.28;\r\n\r\ncontract DocVaultStorage {\r\n  struct Document {\r\n    string cid;\r\n    string offchainId;\r\n    address owner;\r\n    uint256 storedAt;\r\n    bool aiVerified;\r\n    bool isPublic;\r\n    uint8 docType;\r\n  }\r\n\r\n  //cid -> Document - tra cuu nhanh bang CID\r\n  mapping(string => Document) private _documents;\r\n\r\n  //owner => list of CIDs - lay tat ca docs cua 1 vi\r\n  mapping(address => string[]) private _ownerDocs;\r\n\r\n  //cid => exists - check nhanh 0(1) thay vi loop\r\n  mapping (string=>bool) private _cidExists;\r\n\r\n  //Tong so tai lieu - dung cho statistics\r\n  uint256 public totalDocuments;\r\n\r\n  //Event-----------------------------------------------------------\r\n  //backend lang nghe event de update txHash vao postgreSQL\r\n  event DocumentStored(\r\n    address indexed owner,\r\n    string indexed cid,\r\n    string offchainId,\r\n    uint256 storedAt,\r\n    bool aiVerified\r\n  );\r\n\r\n  event DocumentVisibilityChanged(string indexed cid, bool isPublic);\r\n\r\n  //Errors\r\n  error CIDAlreadyExists(string cid);\r\n  error DocumentNotFound(string cid);\r\n  error NotDocumentOwner(string cid, address caller);\r\n  error EmptyCID();\r\n  error EmptyOffchainId();\r\n  //Modifiers\r\n  modifier onlyDocOwner(string calldata cid){\r\n    if(_documents[cid].owner != msg.sender){\r\n      revert NotDocumentOwner(cid, msg.sender);\r\n    }\r\n    _;\r\n  }\r\n  modifier docExists(string calldata cid){\r\n    if(!_cidExists[cid]) revert DocumentNotFound(cid);\r\n    _;\r\n  }\r\n// Write function\r\n\r\n  function storeDocument(\r\n    string calldata cid,\r\n    string calldata offchainId,\r\n    bool aiVerified,\r\n    bool isPublic,\r\n    uint8 docType\r\n  ) external {\r\n    if(bytes(cid).length == 0) revert EmptyCID();\r\n    if (bytes(offchainId).length == 0) revert EmptyOffchainId();\r\n    if (_cidExists[cid]) revert CIDAlreadyExists(cid);\r\n\r\n    _documents[cid] = Document({\r\n      cid: cid,\r\n      offchainId: offchainId,\r\n      owner: msg.sender,\r\n      storedAt: block.timestamp,\r\n      aiVerified: aiVerified,\r\n      isPublic: isPublic,\r\n      docType: docType\r\n    });\r\n    _ownerDocs[msg.sender].push(cid);\r\n    _cidExists[cid] = true;\r\n    totalDocuments++;\r\n\r\n    emit DocumentStored(msg.sender, cid, offchainId, block.timestamp, aiVerified);\r\n\r\n\r\n  }\r\n  function setPublic(string calldata cid, bool isPublic)\r\n  external\r\n  docExists(cid)\r\n  onlyDocOwner(cid)\r\n  {\r\n    _documents[cid].isPublic = isPublic;\r\n    emit DocumentVisibilityChanged(cid, isPublic);\r\n  }\r\n  function getDocument(string calldata cid)\r\n  external\r\n  view\r\n  docExists(cid)\r\n  returns (Document memory)\r\n    {\r\n      return _documents[cid];\r\n    }\r\n    //get all CID of 1 address wallet\r\n    function getOwnerCIDs(address owner) external view returns(string[] memory){\r\n      return _ownerDocs[owner];\r\n    }\r\n    //Check CIid exists - by DocVaultAccess\r\n    function cidExists(string calldata cid) external view returns(bool){\r\n      return _cidExists[cid];\r\n    }\r\n    //Get owner of 1 cid - by DocVaultPayment for transfer \r\n    function getOwner(string calldata cid)\r\n    external\r\n    view\r\n    docExists(cid)\r\n    returns(address)\r\n    {\r\n      return _documents[cid].owner;\r\n    }\r\n\r\n}"
+      }
+    }
+  }
+}

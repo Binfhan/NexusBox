@@ -1,0 +1,52 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-d3acca71c7e5e8d94826218239dae185f31eb18d",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.4.5"
+  },
+  "userSourceNameMap": {
+    "contracts/DocVaultAccess.sol": "project/contracts/DocVaultAccess.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/DocVaultAccess.sol": {
+        "content": "pragma solidity ^0.8.28;\r\n\r\nimport \"./DocVaultStorage.sol\";\r\n\r\ncontract DocVaultAccess {\r\n  struct AccessGrant{\r\n    address grantee;\r\n    uint256 expiresAt;\r\n    bool canDownload;\r\n    bool active;\r\n    address grantedBy;\r\n    uint256 grantedAt;\r\n  }\r\n\r\n  DocVaultStorage public immutable storageContract;\r\n\r\n  mapping(string => mapping(address => AccessGrant))private _grants;\r\n\r\n  mapping(string => address[]) private _grantees;\r\n\r\n  event AccessGranted(\r\n    string indexed cid,\r\n    address indexed grantee,\r\n    uint256 expiresAt,\r\n    bool canDownload\r\n  );\r\n  event AccessRevoked(string indexed cid, address indexed grantee);\r\n\r\n  //Error\r\n  error DocumentNotFound(string cid);\r\n  error NotDocumentOwner(string cid);\r\n  error AccessNotFound(string cid, address grantee);\r\n  error CannotGrantToSelf();\r\n\r\n  //Contructor\r\n\r\n  constructor(address storageAddress) {\r\n    storageContract = DocVaultStorage(storageAddress);\r\n  }\r\n  \r\n  modifier onlyDocOwner(string calldata cid){\r\n    if (!storageContract.cidExists(cid)) revert DocumentNotFound(cid);\r\n    if (storageContract.getOwner(cid)!= msg.sender) revert NotDocumentOwner(cid);\r\n    _;\r\n  }\r\n\r\n  function grantAccess(\r\n\r\n    string calldata cid,\r\n    address grantee,\r\n    uint256 expiresAt,\r\n    bool canDownload\r\n  )external onlyDocOwner(cid){\r\n    if (grantee == msg.sender) revert CannotGrantToSelf();\r\n\r\n    if(!_grants[cid][grantee].active && _grants[cid][grantee].grantedAt == 0){\r\n      _grantees[cid].push(grantee);\r\n    }\r\n\r\n    _grants[cid][grantee] = AccessGrant({\r\n      grantee: grantee,\r\n      expiresAt: expiresAt,\r\n      canDownload: canDownload,\r\n      active: true,\r\n      grantedBy: msg.sender,\r\n      grantedAt: block.timestamp\r\n    });\r\n    emit AccessGranted(cid, grantee, expiresAt, canDownload);\r\n  }\r\n\r\n  function grantAccessFromPayment(\r\n    string calldata cid,\r\n    address grantee,\r\n    address docOwner\r\n  )external{\r\n    if(_grants[cid][grantee].grantedAt == 0){\r\n      _grantees[cid].push(grantee);\r\n    }\r\n    _grants[cid][grantee] = AccessGrant({\r\n      grantee: grantee,\r\n      expiresAt: 0,\r\n      canDownload: true,\r\n      active: true,\r\n      grantedBy: docOwner,\r\n      grantedAt: block.timestamp\r\n    });\r\n    emit AccessGranted(cid, grantee, 0, true);\r\n  }\r\n\r\n  function revokeAccess(string calldata cid, address grantee)\r\n  external\r\n  onlyDocOwner(cid)\r\n  {\r\n    if(!_grants[cid][grantee].active) revert AccessNotFound(cid, grantee);\r\n    _grants[cid][grantee].active = false;\r\n    emit AccessRevoked(cid, grantee);\r\n  }\r\n\r\n  function hasValidAccess(string calldata cid, address user)\r\n  external\r\n  view\r\n  returns (bool)\r\n  {\r\n    // owner always has full rights.\r\n    if (storageContract.cidExists(cid) && storageContract.getOwner(cid) == user)\r\n    {\r\n    return true;\r\n    }\r\n  AccessGrant memory grant = _grants[cid][user];\r\n  if (!grant.active) return false;\r\n\r\n  //check date\r\n  if (grant.expiresAt != 0 && block.timestamp > grant.expiresAt){\r\n    return false;\r\n  }\r\n  return true;\r\n  }\r\n\r\n  function getGrant(string calldata cid, address grantee)\r\n  external\r\n  view\r\n  returns (AccessGrant memory)\r\n  {\r\n    return _grants[cid][grantee];\r\n  }\r\n\r\n  function getGrantees(string calldata cid)\r\n  external\r\n  view\r\n  returns (address[] memory)\r\n  {\r\n    return _grantees[cid];\r\n  }\r\n\r\n\r\n}"
+      },
+      "project/contracts/DocVaultStorage.sol": {
+        "content": "pragma solidity ^0.8.28;\r\n\r\ncontract DocVaultStorage {\r\n  struct Document {\r\n    string cid;\r\n    string offchainId;\r\n    address owner;\r\n    uint256 storedAt;\r\n    bool aiVerified;\r\n    bool isPublic;\r\n    uint8 docType;\r\n  }\r\n\r\n  //cid -> Document - tra cuu nhanh bang CID\r\n  mapping(string => Document) private _documents;\r\n\r\n  //owner => list of CIDs - lay tat ca docs cua 1 vi\r\n  mapping(address => string[]) private _ownerDocs;\r\n\r\n  //cid => exists - check nhanh 0(1) thay vi loop\r\n  mapping (string=>bool) private _cidExists;\r\n\r\n  //Tong so tai lieu - dung cho statistics\r\n  uint256 public totalDocuments;\r\n\r\n  //Event-----------------------------------------------------------\r\n  //backend lang nghe event de update txHash vao postgreSQL\r\n  event DocumentStored(\r\n    address indexed owner,\r\n    string indexed cid,\r\n    string offchainId,\r\n    uint256 storedAt,\r\n    bool aiVerified\r\n  );\r\n\r\n  event DocumentVisibilityChanged(string indexed cid, bool isPublic);\r\n\r\n  //Errors\r\n  error CIDAlreadyExists(string cid);\r\n  error DocumentNotFound(string cid);\r\n  error NotDocumentOwner(string cid, address caller);\r\n  error EmptyCID();\r\n  error EmptyOffchainId();\r\n  //Modifiers\r\n  modifier onlyDocOwner(string calldata cid){\r\n    if(_documents[cid].owner != msg.sender){\r\n      revert NotDocumentOwner(cid, msg.sender);\r\n    }\r\n    _;\r\n  }\r\n  modifier docExists(string calldata cid){\r\n    if(!_cidExists[cid]) revert DocumentNotFound(cid);\r\n    _;\r\n  }\r\n// Write function\r\n\r\n  function storeDocument(\r\n    string calldata cid,\r\n    string calldata offchainId,\r\n    bool aiVerified,\r\n    bool isPublic,\r\n    uint8 docType\r\n  ) external {\r\n    if(bytes(cid).length == 0) revert EmptyCID();\r\n    if (bytes(offchainId).length == 0) revert EmptyOffchainId();\r\n    if (_cidExists[cid]) revert CIDAlreadyExists(cid);\r\n\r\n    _documents[cid] = Document({\r\n      cid: cid,\r\n      offchainId: offchainId,\r\n      owner: msg.sender,\r\n      storedAt: block.timestamp,\r\n      aiVerified: aiVerified,\r\n      isPublic: isPublic,\r\n      docType: docType\r\n    });\r\n    _ownerDocs[msg.sender].push(cid);\r\n    _cidExists[cid] = true;\r\n    totalDocuments++;\r\n\r\n    emit DocumentStored(msg.sender, cid, offchainId, block.timestamp, aiVerified);\r\n\r\n\r\n  }\r\n  function setPublic(string calldata cid, bool isPublic)\r\n  external\r\n  docExists(cid)\r\n  onlyDocOwner(cid)\r\n  {\r\n    _documents[cid].isPublic = isPublic;\r\n    emit DocumentVisibilityChanged(cid, isPublic);\r\n  }\r\n  function getDocument(string calldata cid)\r\n  external\r\n  view\r\n  docExists(cid)\r\n  returns (Document memory)\r\n    {\r\n      return _documents[cid];\r\n    }\r\n    //get all CID of 1 address wallet\r\n    function getOwnerCIDs(address owner) external view returns(string[] memory){\r\n      return _ownerDocs[owner];\r\n    }\r\n    //Check CIid exists - by DocVaultAccess\r\n    function cidExists(string calldata cid) external view returns(bool){\r\n      return _cidExists[cid];\r\n    }\r\n    //Get owner of 1 cid - by DocVaultPayment for transfer \r\n    function getOwner(string calldata cid)\r\n    external\r\n    view\r\n    docExists(cid)\r\n    returns(address)\r\n    {\r\n      return _documents[cid].owner;\r\n    }\r\n\r\n}"
+      }
+    }
+  }
+}

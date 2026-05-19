@@ -31,7 +31,7 @@ contract DocVaultStorage {
     string offchainId,
     uint256 storedAt,
     bool aiVerified
-  )
+  );
 
   event DocumentVisibilityChanged(string indexed cid, bool isPublic);
 
@@ -52,6 +52,68 @@ contract DocVaultStorage {
     if(!_cidExists[cid]) revert DocumentNotFound(cid);
     _;
   }
+// Write function
 
-  
+  function storeDocument(
+    string calldata cid,
+    string calldata offchainId,
+    bool aiVerified,
+    bool isPublic,
+    uint8 docType
+  ) external {
+    if(bytes(cid).length == 0) revert EmptyCID();
+    if (bytes(offchainId).length == 0) revert EmptyOffchainId();
+    if (_cidExists[cid]) revert CIDAlreadyExists(cid);
+
+    _documents[cid] = Document({
+      cid: cid,
+      offchainId: offchainId,
+      owner: msg.sender,
+      storedAt: block.timestamp,
+      aiVerified: aiVerified,
+      isPublic: isPublic,
+      docType: docType
+    });
+    _ownerDocs[msg.sender].push(cid);
+    _cidExists[cid] = true;
+    totalDocuments++;
+
+    emit DocumentStored(msg.sender, cid, offchainId, block.timestamp, aiVerified);
+
+
+  }
+  function setPublic(string calldata cid, bool isPublic)
+  external
+  docExists(cid)
+  onlyDocOwner(cid)
+  {
+    _documents[cid].isPublic = isPublic;
+    emit DocumentVisibilityChanged(cid, isPublic);
+  }
+  function getDocument(string calldata cid)
+  external
+  view
+  docExists(cid)
+  returns (Document memory)
+    {
+      return _documents[cid];
+    }
+    //get all CID of 1 address wallet
+    function getOwnerCIDs(address owner) external view returns(string[] memory){
+      return _ownerDocs[owner];
+    }
+    //Check CIid exists - by DocVaultAccess
+    function cidExists(string calldata cid) external view returns(bool){
+      return _cidExists[cid];
+    }
+    //Get owner of 1 cid - by DocVaultPayment for transfer 
+    function getOwner(string calldata cid)
+    external
+    view
+    docExists(cid)
+    returns(address)
+    {
+      return _documents[cid].owner;
+    }
+
 }
