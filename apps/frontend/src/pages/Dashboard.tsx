@@ -11,6 +11,16 @@ import {
   getAIAnalysis,
   getEditSuggestions,
   getStorageInfo,
+  getStarredDocuments,
+  getRecentDocuments,
+  getTrashDocuments,
+  searchDocuments,
+  toggleStar,
+  restoreDocument,
+  getFolders,
+  createFolder,
+  getFolderBreadcrumb,
+  verifySharePassword,
 } from '../lib/api'
 
 import { StatsCards } from '../components/dashboard/StatsCards'
@@ -23,10 +33,10 @@ import { FilePreviewModal } from '../components/dashboard/FilePreviewModal'
 
 import {
   Scale, FileText, Share2, Brain,
-  HardDrive, Menu, X, Link2, Key,
+  HardDrive, Menu, X, Link2, Key, Lock,
   Sparkles, CheckCircle,
-  Users, FileSearch, Eye, Trash2,
-  List, Grid3X3, FolderOpen, Upload, LayoutDashboard,
+  Users, FileSearch, Eye, Trash2, Upload,
+  List, Grid3X3, FolderOpen, LayoutDashboard,
 } from 'lucide-react'
 
 const CONTRACT_ADDRESS =
@@ -49,11 +59,14 @@ interface Document {
   mime_type?: string
   content_text?: string
   relative_path?: string
+  folder_group?: string
   created_at: string
   shared_by?: string
   share_id?: string
   permission?: string
   shared_at?: string
+  has_password?: boolean
+  is_starred?: boolean
 }
 
 interface DashboardProps {
@@ -94,17 +107,86 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
   const [editSuggestions, setEditSuggestions] = useState<any>(null)
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
 
-  const [storageInfo, setStorageInfo] = useState<{ storage_limit: number; storage_used: number; storage_available: number } | null>(null)
+  const [storageInfo, setStorageInfo] = useState<{ storage_limit: number; storage_used: number; storage_available: number; plan_name: string; plan_max_docs: number } | null>(null)
   const [showUpload, setShowUpload] = useState(false)
 
   const [shareDialogDoc, setShareDialogDoc] = useState<Document | null>(null)
+  const [shareDialogResourceLabel, setShareDialogResourceLabel] = useState<string | undefined>(undefined)
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null)
+  const [passwordVerificationShareId, setPasswordVerificationShareId] = useState<string | null>(null)
+  const [passwordVerificationDoc, setPasswordVerificationDoc] = useState<Document | null>(null)
+  const [passwordInput, setPasswordInput] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false)
+  const [showFolderMenu, setShowFolderMenu] = useState(false)
 
-  useEffect(() => { loadDocs(); loadSharedDocs(); loadStorageInfo() }, [token])
+  const [currentFolderId, setCurrentFolderId] = useState<string | undefined>(undefined)
+  const [folders, setFolders] = useState<any[]>([])
+  const [breadcrumb, setBreadcrumb] = useState<any[]>([])
+  const [navMode, setNavMode] = useState<'all' | 'starred' | 'recent' | 'trash'>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<any[] | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: any } | null>(null)
+  const [expandedFolder, setExpandedFolder] = useState<string | null>(null)
 
-  const loadDocs = async () => {
+  useEffect(() => { loadDocs(); loadSharedDocs(); loadStorageInfo(); loadFolders() }, [token])
+
+  const loadFolders = async (parentId?: string) => {
     try {
-      const data = await getDocuments(token)
+      const data = await getFolders(token, parentId)
+      setFolders(data)
+    } catch (err) {
+      console.error('Error loading folders:', err)
+    }
+  }
+
+  const loadBreadcrumb = async (folderId: string) => {
+    try {
+      const data = await getFolderBreadcrumb(token, folderId)
+      setBreadcrumb(data)
+    } catch { setBreadcrumb([]) }
+  }
+
+  const navigateToFolder = async (folderId?: string) => {
+    setCurrentFolderId(folderId)
+    setNavMode('all')
+    if (folderId) {
+      await loadBreadcrumb(folderId)
+    } else {
+      setBreadcrumb([])
+    }
+    await loadDocs(folderId, 'all')
+    await loadFolders(folderId)
+  }
+
+  const handleCreateFolder = async () => {
+    const name = prompt('Nhập tên thư mục mới:')
+    if (!name) return
+    try {
+      await createFolder(token, name, currentFolderId)
+      await loadFolders(currentFolderId)
+    } catch (err) {
+      console.error('Create folder failed:', err)
+      alert('Tạo thư mục thất bại!')
+    }
+  }
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) { setSearchResults(null); return }
+    try {
+      const results = await searchDocuments(token, searchQuery)
+      setSearchResults(results)
+    } catch { setSearchResults([]) }
+  }
+
+  const loadDocs = async (folderId?: string, mode?: string) => {
+    try {
+      let data: any[]
+      const m = mode || navMode
+      if (m === 'starred') data = await getStarredDocuments(token)
+      else if (m === 'recent') data = await getRecentDocuments(token)
+      else if (m === 'trash') data = await getTrashDocuments(token)
+      else data = await getDocuments(token, folderId ?? currentFolderId)
       setDocuments(data)
     } catch (err) {
       console.error('Error loading documents:', err)
@@ -136,7 +218,7 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
       const folderGroup = isFolder ? 'folder_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) : ''
       for (const file of files) {
         const relativePath = (file as any).webkitRelativePath || ''
-        await uploadDocument(token, file, relativePath, folderGroup)
+        await uploadDocument(token, file, relativePath, folderGroup, currentFolderId)
       }
       await loadDocs()
       await loadStorageInfo()
@@ -160,6 +242,24 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
     } catch (err) {
       console.error('Delete failed:', err)
       alert('Xóa tài liệu thất bại!')
+    }
+  }
+
+  const handleDeleteFolder = async (folderGroup: string) => {
+    const folderDocs = documents.filter(d => d.folder_group === folderGroup)
+    if (!window.confirm(`Xóa thư mục "${folderDocs.find(d => d.relative_path)?.relative_path?.split('/')[0] || folderGroup}" và ${folderDocs.length} tài liệu?`)) return
+    try {
+      for (const doc of folderDocs) {
+        await deleteDocument(token, doc.id)
+      }
+      setDocuments(prev => prev.filter(d => d.folder_group !== folderGroup))
+      setSharedDocs(prev => prev.filter(d => d.folder_group !== folderGroup))
+      if (selectedDoc?.folder_group === folderGroup) setSelectedDoc(null)
+      if (previewDoc?.folder_group === folderGroup) setPreviewDoc(null)
+      await loadStorageInfo()
+    } catch (err) {
+      console.error('Delete folder failed:', err)
+      alert('Xóa thư mục thất bại!')
     }
   }
 
@@ -251,6 +351,88 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
     }
   }
 
+  const handleStoreFolderOnChain = async (folderGroup: string) => {
+    const folderDocs = documents.filter(d => d.folder_group === folderGroup && !d.is_onchain)
+    if (folderDocs.length === 0) {
+      alert('Tất cả tài liệu trong thư mục đã được lưu On-Chain!')
+      return
+    }
+    if (!window.confirm(`Lưu ${folderDocs.length} tài liệu trong thư mục lên On-Chain?`)) return
+    if (!(window as any).ethereum) {
+      alert('Vui lòng cài đặt ví Metamask!')
+      return
+    }
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum)
+      const signer = await provider.getSigner()
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
+      for (const doc of folderDocs) {
+        const tx = await contract.storeDocument(doc.cid, doc.id, doc.is_ai_verified, false, 0)
+        await tx.wait()
+      }
+      alert(`Đã lưu ${folderDocs.length} tài liệu lên On-Chain thành công!`)
+      loadDocs()
+    } catch (err: any) {
+      alert(`Giao dịch thất bại: ${err?.message || err}`)
+    }
+  }
+
+  const openSharedDoc = (doc: Document) => {
+    if (doc.has_password && doc.share_id) {
+      setPasswordVerificationShareId(doc.share_id)
+      setPasswordVerificationDoc(doc)
+      setPasswordInput('')
+      setPasswordError('')
+    } else {
+      setPreviewDoc(doc)
+    }
+  }
+
+  const handleToggleStar = async (e: React.MouseEvent, doc: Document) => {
+    e.stopPropagation()
+    try {
+      await toggleStar(token, doc.id, !doc.is_starred)
+      setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, is_starred: !d.is_starred } : d))
+      setSharedDocs(prev => prev.map(d => d.id === doc.id ? { ...d, is_starred: !d.is_starred } : d))
+    } catch (err) {
+      console.error('Toggle star failed:', err)
+    }
+  }
+
+  const handleToggleStarFolder = async (e: React.MouseEvent, docs: Document[]) => {
+    e.stopPropagation()
+    try {
+      const newStarred = !docs[0].is_starred
+      for (const doc of docs) {
+        await toggleStar(token, doc.id, newStarred)
+      }
+      setDocuments(prev => prev.map(d =>
+        docs.some(fd => fd.id === d.id) ? { ...d, is_starred: newStarred } : d
+      ))
+      setSharedDocs(prev => prev.map(d =>
+        docs.some(fd => fd.id === d.id) ? { ...d, is_starred: newStarred } : d
+      ))
+    } catch (err) {
+      console.error('Toggle star folder failed:', err)
+    }
+  }
+
+  useEffect(() => {
+    const close = () => setContextMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [])
+
+  const handleContextMenu = (e: React.MouseEvent, item: any) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, item })
+  }
+
+  const toggleFolderExpand = (key: string) => {
+    setExpandedFolder(prev => prev === key ? null : key)
+  }
+
   const handleCommandAction = (action: string) => {
     if (action === 'upload') { setActiveTab('dashboard'); setShowUpload(true) }
   }
@@ -268,6 +450,57 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
     if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB'
     if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB'
     return bytes + ' B'
+  }
+
+  function getDisplayItems(docs: Document[], extraFolders: any[] = []) {
+    const folderMap = new Map<string, Document[]>()
+    const files: Document[] = []
+
+    for (const doc of docs) {
+      if (doc.folder_group) {
+        const arr = folderMap.get(doc.folder_group) || []
+        arr.push(doc)
+        folderMap.set(doc.folder_group, arr)
+      } else {
+        files.push(doc)
+      }
+    }
+
+    const items: Array<{
+      type: 'file' | 'folder'
+      key: string
+      doc?: Document
+      docs?: Document[]
+      folderName?: string
+      folderEntity?: any
+    }> = []
+
+    for (const folder of extraFolders) {
+      items.push({
+        type: 'folder',
+        key: 'f_' + folder.id,
+        folderName: folder.name,
+        folderEntity: folder,
+      })
+    }
+
+    for (const doc of files) {
+      items.push({ type: 'file', key: doc.id, doc })
+    }
+
+    for (const [, docs] of folderMap) {
+      const firstRelativePath = docs.find(d => d.relative_path)?.relative_path || ''
+      const folderName = firstRelativePath ? firstRelativePath.split('/')[0] : docs[0].title
+      items.push({ type: 'folder', key: 'vg_' + (docs[0].folder_group || docs[0].id), docs, folderName })
+    }
+
+    items.sort((a, b) => {
+      const dateA = a.doc?.created_at || (a.docs && a.docs[0]?.created_at) || ''
+      const dateB = b.doc?.created_at || (b.docs && b.docs[0]?.created_at) || ''
+      return dateB.localeCompare(dateA)
+    })
+
+    return items
   }
 
   const totalDocs = documents.length
@@ -301,8 +534,52 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
           token={token}
           docId={shareDialogDoc.id}
           docTitle={shareDialogDoc.title}
-          onClose={() => setShareDialogDoc(null)}
+          resourceLabel={shareDialogResourceLabel}
+          onClose={() => { setShareDialogDoc(null); setShareDialogResourceLabel(undefined) }}
         />
+      )}
+
+      {passwordVerificationDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setPasswordVerificationDoc(null); setPasswordVerificationShareId(null) }}>
+          <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-center gap-2">
+              <Lock className="h-5 w-5 text-amber-500" />
+              <h2 className="text-base font-semibold text-zinc-100">Mật khẩu yêu cầu</h2>
+            </div>
+            <p className="mb-4 text-sm text-zinc-400">
+              Tài liệu này được bảo vệ bằng mật khẩu. Vui lòng nhập mật khẩu để xem.
+            </p>
+            <input type="password" value={passwordInput} onChange={e => { setPasswordInput(e.target.value); setPasswordError('') }}
+              placeholder="Nhập mật khẩu..."
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-amber-500 transition-colors mb-3" />
+            {passwordError && <p className="mb-3 text-xs text-red-400">{passwordError}</p>}
+            <div className="flex gap-2">
+              <button onClick={() => { setPasswordVerificationDoc(null); setPasswordVerificationShareId(null); setPasswordError(''); setPasswordInput('') }}
+                className="flex-1 rounded-lg border border-zinc-700 py-2.5 text-sm font-medium text-zinc-400 hover:bg-zinc-800 transition-colors">
+                Hủy
+              </button>
+              <button onClick={async () => {
+                if (!passwordInput) { setPasswordError('Vui lòng nhập mật khẩu'); return }
+                setIsVerifyingPassword(true)
+                setPasswordError('')
+                try {
+                  await verifySharePassword(token, passwordVerificationShareId!, passwordInput)
+                  setPreviewDoc(passwordVerificationDoc)
+                  setPasswordVerificationDoc(null)
+                  setPasswordVerificationShareId(null)
+                  setPasswordInput('')
+                } catch (err: any) {
+                  setPasswordError(err.message || 'Sai mật khẩu')
+                } finally {
+                  setIsVerifyingPassword(false)
+                }
+              }} disabled={isVerifyingPassword}
+                className="flex-1 rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-50 transition-colors">
+                {isVerifyingPassword ? 'Đang kiểm tra...' : 'Xác nhận'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {previewDoc && (
@@ -312,6 +589,99 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
           onClose={() => setPreviewDoc(null)}
           onDelete={handleDeleteDoc}
         />
+      )}
+
+      {contextMenu && (
+        <div
+          className="fixed z-50 w-48 rounded-xl border border-zinc-700 bg-zinc-900 py-1.5 shadow-2xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={e => e.stopPropagation()}
+        >
+          {contextMenu.item.folderEntity && (
+            <button onClick={() => { navigateToFolder(contextMenu.item.folderEntity.id); setContextMenu(null) }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
+              <FolderOpen className="h-3.5 w-3.5 text-amber-500" /> Open folder
+            </button>
+          )}
+          {contextMenu.item.doc && (
+            <button onClick={() => { setPreviewDoc(contextMenu.item.doc); setContextMenu(null) }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
+              <Eye className="h-3.5 w-3.5" /> Preview
+            </button>
+          )}
+          {contextMenu.item.docs && !contextMenu.item.folderEntity && (
+            <button onClick={() => { setPreviewDoc(contextMenu.item.docs![0]); setContextMenu(null) }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
+              <Eye className="h-3.5 w-3.5" /> Preview
+            </button>
+          )}
+          <div className="my-1 border-t border-zinc-800" />
+          {(contextMenu.item.doc || contextMenu.item.docs) && (
+            <button onClick={async () => {
+              setContextMenu(null)
+              if (contextMenu.item.doc) {
+                await toggleStar(token, contextMenu.item.doc.id, !contextMenu.item.doc.is_starred)
+                setDocuments(prev => prev.map(d => d.id === contextMenu.item.doc.id ? { ...d, is_starred: !d.is_starred } : d))
+                setSharedDocs(prev => prev.map(d => d.id === contextMenu.item.doc.id ? { ...d, is_starred: !d.is_starred } : d))
+              } else if (contextMenu.item.docs) {
+                const docs = contextMenu.item.docs
+                const newStarred = !docs[0].is_starred
+                for (const d of docs) await toggleStar(token, d.id, newStarred)
+                setDocuments(prev => prev.map(d => docs.some((fd: Document) => fd.id === d.id) ? { ...d, is_starred: newStarred } : d))
+                setSharedDocs(prev => prev.map(d => docs.some((fd: Document) => fd.id === d.id) ? { ...d, is_starred: newStarred } : d))
+              }
+            }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              {contextMenu.item.doc?.is_starred || contextMenu.item.docs?.[0]?.is_starred ? 'Unstar' : 'Star'}
+            </button>
+          )}
+          {(contextMenu.item.doc || contextMenu.item.docs) && (
+            <button onClick={() => {
+              const doc = contextMenu.item.doc || contextMenu.item.docs![0]
+              setContextMenu(null)
+              setShareDialogDoc(doc)
+              if (contextMenu.item.docs) setShareDialogResourceLabel(`📁 ${contextMenu.item.folderName}`)
+            }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
+              <Share2 className="h-3.5 w-3.5" /> Share
+            </button>
+          )}
+          {contextMenu.item.doc && !contextMenu.item.doc.is_onchain && (
+            <button onClick={() => { setContextMenu(null); handleStoreOnChain(contextMenu.item.doc) }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
+              <Link2 className="h-3.5 w-3.5 text-amber-500" /> Store On-Chain
+            </button>
+          )}
+          {contextMenu.item.docs && !contextMenu.item.folderEntity && (
+            <button onClick={() => { setContextMenu(null); handleStoreFolderOnChain(contextMenu.item.docs![0].folder_group!) }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
+              <Link2 className="h-3.5 w-3.5 text-amber-500" /> Store all On-Chain
+            </button>
+          )}
+          <div className="my-1 border-t border-zinc-800" />
+          {contextMenu.item.folderEntity && (
+            <button onClick={async () => {
+              setContextMenu(null)
+              if (!window.confirm(`Xóa thư mục "${contextMenu.item.folderEntity.name}"?`)) return
+            }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-zinc-800 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </button>
+          )}
+          {contextMenu.item.doc && (
+            <button onClick={() => { setContextMenu(null); handleDeleteDoc(contextMenu.item.doc) }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-zinc-800 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </button>
+          )}
+          {contextMenu.item.docs && !contextMenu.item.folderEntity && (
+            <button onClick={() => { setContextMenu(null); handleDeleteFolder(contextMenu.item.docs![0].folder_group!) }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-zinc-800 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" /> Delete folder
+            </button>
+          )}
+        </div>
       )}
 
       {/* ── SIDEBAR ── */}
@@ -324,11 +694,11 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
             <span className="text-sm font-semibold text-zinc-100">DocVault</span>
           </div>
 
-          <nav className="flex-1 space-y-1 px-3 py-4">
+          <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
             {sidebarItems.map(item => (
               <button
                 key={item.id}
-                onClick={() => { setActiveTab(item.id); setShowUpload(false) }}
+                onClick={() => { setActiveTab(item.id); setNavMode('all'); setCurrentFolderId(undefined); setBreadcrumb([]); setShowUpload(false); if (item.id !== 'dashboard') { loadDocs(); loadFolders() } }}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   ${activeTab === item.id
                     ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
@@ -344,6 +714,63 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                 )}
               </button>
             ))}
+
+            <div className="my-3 border-t border-zinc-800" />
+
+            <button onClick={() => { setNavMode('starred'); setActiveTab('my-documents'); loadDocs(undefined, 'starred') }}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${navMode === 'starred' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'}`}>
+              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Favorites
+            </button>
+            <button onClick={() => { setNavMode('recent'); setActiveTab('my-documents'); loadDocs(undefined, 'recent') }}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${navMode === 'recent' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'}`}>
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2"/><path d="M12 6v6l4 2" strokeWidth="2" strokeLinecap="round"/></svg> Recent
+            </button>
+            <button onClick={() => { setNavMode('trash'); setActiveTab('my-documents'); loadDocs(undefined, 'trash') }}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${navMode === 'trash' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'}`}>
+              <Trash2 className="h-4 w-4" /> Trash
+            </button>
+
+            <div className="my-3 border-t border-zinc-800" />
+
+            <div className="flex items-center justify-between px-1">
+              <span className="text-sm font-medium text-zinc-400">Folders</span>
+              <div className="relative">
+                <button onClick={() => setShowFolderMenu(!showFolderMenu)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors" title="Tạo mới">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" strokeWidth="2" strokeLinecap="round"/></svg>
+                </button>
+                {showFolderMenu && (
+                  <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
+                    <button onClick={() => { setShowFolderMenu(false); handleCreateFolder() }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors">
+                      <FolderOpen className="h-4 w-4 text-amber-500" />
+                      Tạo folder
+                    </button>
+                    <button onClick={() => { setShowFolderMenu(false); setShowUpload(true); setActiveTab('my-documents') }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors">
+                      <Upload className="h-4 w-4 text-amber-500" />
+                      Tải file lên
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {currentFolderId && (
+              <button onClick={() => navigateToFolder(undefined)}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors border border-transparent">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Back to root
+              </button>
+            )}
+
+            {folders.map(f => (
+              <button key={f.id} onClick={() => navigateToFolder(f.id)}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${currentFolderId === f.id ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'}`}>
+                <FolderOpen className="h-4 w-4 text-amber-500" />
+                <span className="truncate flex-1 text-left">{f.name}</span>
+              </button>
+            ))}
           </nav>
 
           <div className="border-t border-zinc-800 px-4 py-4">
@@ -352,8 +779,18 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                 <HardDrive className="h-3.5 w-3.5" />
                 <span>Storage</span>
               </div>
+              {storageInfo && (
+                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-medium text-amber-400 uppercase">
+                  {storageInfo.plan_name}
+                </span>
+              )}
+            </div>
+            <div className="mb-1 flex items-center justify-between">
               <span className="text-[10px] text-zinc-600">
                 {storageInfo ? `${formatStorage(storageInfo.storage_used)} / ${formatStorage(storageInfo.storage_limit)}` : '...'}
+              </span>
+              <span className="text-[10px] text-zinc-600">
+                {storageInfo ? `${documents.length} / ${storageInfo.plan_max_docs === -1 ? '∞' : storageInfo.plan_max_docs} docs` : ''}
               </span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
@@ -431,6 +868,8 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                     totalDocs={totalDocs}
                     verifiedDocs={verifiedDocs}
                     storageUsed={storageInfo ? formatStorage(storageInfo.storage_used) : '0 B'}
+                    storageLimit={storageInfo ? formatStorage(storageInfo.storage_limit) : ''}
+                    planName={storageInfo?.plan_name || ''}
                   />
                 </div>
 
@@ -458,63 +897,128 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                               </td>
                             </tr>
                           ) : (
-                            filteredDocs.map(doc => (
-                              <tr
-                                key={doc.id}
-                                onClick={() => selectDoc(doc)}
-                                className={`border-b border-zinc-800/60 cursor-pointer transition-colors ${
-                                  selectedDoc?.id === doc.id
-                                    ? 'bg-amber-500/5 border-l-2 border-l-amber-500'
-                                    : 'hover:bg-zinc-800/50'
-                                }`}
-                              >
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center gap-2">
-                                    <FileText className="h-4 w-4 text-zinc-500 flex-shrink-0" />
-                                    <span className="truncate max-w-[240px] font-medium text-zinc-200">{doc.title}</span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <span className="text-xs text-zinc-500 capitalize">
-                                    {doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || 'unknown'}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3">
-                                  {doc.is_onchain ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[11px] font-medium text-emerald-400">✓ On-Chain</span>
-                                  ) : doc.is_ai_verified ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[11px] font-medium text-blue-400">✓ AI Verified</span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-400">⏳ Pending</span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3 text-xs text-zinc-500">
-                                  {new Date(doc.created_at).toLocaleDateString('vi-VN')}
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-                                    <button title="Preview" onClick={() => setPreviewDoc(doc)}
-                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                      <Eye className="h-3.5 w-3.5" />
-                                    </button>
-                                    {!doc.is_onchain && (
-                                      <button title="Store On-Chain" onClick={() => handleStoreOnChain(doc)}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-amber-500 hover:bg-amber-500/10 transition-colors">
-                                        <Link2 className="h-3.5 w-3.5" />
-                                      </button>
+                            getDisplayItems(filteredDocs).map(item => {
+                              if (item.type === 'folder') {
+                                const latest = item.docs!.reduce((a, b) => a.created_at > b.created_at ? a : b)
+                                return (
+                                  <tr
+                                    key={item.key}
+                                    onClick={() => setPreviewDoc(item.docs![0])}
+                                    onContextMenu={e => handleContextMenu(e, item)}
+                                    className="border-b border-zinc-800/60 cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                                  >
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <FolderOpen className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                                        <span className="truncate max-w-[240px] font-medium text-zinc-200">{item.folderName}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span className="text-xs text-zinc-500">folder</span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span className="text-xs text-zinc-500">{item.docs!.length} files</span>
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-zinc-500">
+                                      {new Date(latest.created_at).toLocaleDateString('vi-VN')}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                        <button title="Preview" onClick={() => setPreviewDoc(item.docs![0])}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                          <Eye className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button title="Store On-Chain" onClick={() => handleStoreFolderOnChain(item.docs![0].folder_group!)}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-amber-500 hover:bg-amber-500/10 transition-colors">
+                                          <Link2 className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button title="Add to Favorites" onClick={e => handleToggleStarFolder(e, item.docs!)}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                          <svg className={`h-3.5 w-3.5 ${item.docs![0].is_starred ? 'text-amber-400 fill-amber-400' : ''}`} viewBox="0 0 24 24">
+                                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                          </svg>
+                                        </button>
+                                        <button title="Share" onClick={() => { setShareDialogResourceLabel(`📁 ${item.folderName}`); setShareDialogDoc(item.docs![0]) }}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                          <Share2 className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button title="Delete" onClick={() => handleDeleteFolder(item.docs![0].folder_group!)}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )
+                              }
+                              const doc = item.doc!
+                              return (
+                                <tr
+                                  key={doc.id}
+                                  onClick={() => selectDoc(doc)}
+                                  onContextMenu={e => handleContextMenu(e, item)}
+                                  className={`border-b border-zinc-800/60 cursor-pointer transition-colors ${
+                                    selectedDoc?.id === doc.id
+                                      ? 'bg-amber-500/5 border-l-2 border-l-amber-500'
+                                      : doc.is_starred
+                                        ? 'bg-amber-500/5'
+                                        : 'hover:bg-zinc-800/50'
+                                  }`}
+                                >
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <FileText className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+                                      <span className="truncate max-w-[240px] font-medium text-zinc-200">{doc.title}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="text-xs text-zinc-500 capitalize">
+                                      {doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || 'unknown'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {doc.is_onchain ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[11px] font-medium text-emerald-400">✓ On-Chain</span>
+                                    ) : doc.is_ai_verified ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[11px] font-medium text-blue-400">✓ AI Verified</span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-400">⏳ Pending</span>
                                     )}
-                                    <button title="Share" onClick={() => setShareDialogDoc(doc)}
-                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                      <Share2 className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button title="Delete" onClick={() => handleDeleteDoc(doc)}
-                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-zinc-500">
+                                    {new Date(doc.created_at).toLocaleDateString('vi-VN')}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                      <button title="Preview" onClick={() => setPreviewDoc(doc)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </button>
+                                      {!doc.is_onchain && (
+                                        <button title="Store On-Chain" onClick={() => handleStoreOnChain(doc)}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-amber-500 hover:bg-amber-500/10 transition-colors">
+                                          <Link2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                      <button title="Add to Favorites" onClick={e => handleToggleStar(e, doc)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        <svg className={`h-3.5 w-3.5 ${doc.is_starred ? 'text-amber-400 fill-amber-400' : ''}`} viewBox="0 0 24 24">
+                                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                        </svg>
+                                      </button>
+                                      <button title="Share" onClick={() => setShareDialogDoc(doc)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        <Share2 className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button title="Delete" onClick={() => handleDeleteDoc(doc)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })
                           )}
                         </tbody>
                       </table>
@@ -570,38 +1074,65 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
             ══════════════════════════════════════════ */}
             {activeTab === 'my-documents' && (
               <div>
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <h2 className="text-xl font-semibold text-zinc-100">My Documents</h2>
-                    <p className="mt-1 text-sm text-zinc-500">Tất cả tài liệu của bạn</p>
+                    <div className="flex items-center gap-2 text-sm text-zinc-500">
+                      <button onClick={() => { setNavMode('all'); setCurrentFolderId(undefined); setBreadcrumb([]); loadDocs() }} className="hover:text-zinc-300 transition-colors">Dashboard</button>
+                      {breadcrumb.length > 0 ? breadcrumb.map((f, idx) => (
+                        <React.Fragment key={f.id}>
+                          {idx > 0 && <span className="text-zinc-700">/</span>}
+                          <button onClick={() => navigateToFolder(f.id)} className="hover:text-zinc-300 transition-colors">
+                            {f.name}
+                          </button>
+                        </React.Fragment>
+                      )) : navMode !== 'all' && (
+                        <>
+                          <span className="text-zinc-700">/</span>
+                          <span className="text-zinc-400">
+                            {navMode === 'starred' ? 'Favorites' : navMode === 'recent' ? 'Recent' : 'Trash'}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-600">
+                      {navMode === 'trash' ? 'Deleted documents' : navMode === 'starred' ? 'Favorite documents' : navMode === 'recent' ? 'Recent documents' : `All documents (${documents.length})`}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setViewMode('list')}
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                        viewMode === 'list' ? 'bg-amber-500/10 text-amber-400' : 'text-zinc-500 hover:bg-zinc-800'
-                      }`}
-                    >
+                    <div className="relative">
+                      <input type="text" placeholder="Search..." value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                        className="w-40 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-amber-500 transition-colors"
+                      />
+                      <button onClick={handleSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" strokeWidth="2"/><path d="M21 21l-4.35-4.35" strokeWidth="2" strokeLinecap="round"/></svg>
+                      </button>
+                    </div>
+                    <button onClick={() => setViewMode('list')}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${viewMode === 'list' ? 'bg-amber-500/10 text-amber-400' : 'text-zinc-500 hover:bg-zinc-800'}`}>
                       <List className="h-4 w-4" />
                     </button>
-                    <button
-                      onClick={() => setViewMode('grid')}
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                        viewMode === 'grid' ? 'bg-amber-500/10 text-amber-400' : 'text-zinc-500 hover:bg-zinc-800'
-                      }`}
-                    >
+                    <button onClick={() => setViewMode('grid')}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-amber-500/10 text-amber-400' : 'text-zinc-500 hover:bg-zinc-800'}`}>
                       <Grid3X3 className="h-4 w-4" />
                     </button>
                     <div className="mx-2 h-6 w-px bg-zinc-800" />
-                    <button
-                      onClick={() => setShowUpload(!showUpload)}
-                      className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400 transition-colors"
-                    >
-                      <Upload className="h-3.5 w-3.5" />
-                      Upload
+                    <button onClick={() => setShowUpload(!showUpload)}
+                      className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400 transition-colors">
+                      <Upload className="h-3.5 w-3.5" /> Upload
                     </button>
                   </div>
                 </div>
+
+                {searchResults !== null && (
+                  <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2 text-xs text-zinc-400">
+                    {searchResults.length > 0
+                      ? `Search results: ${searchResults.length} files`
+                      : 'No results found'}
+                    <button onClick={() => { setSearchResults(null); setSearchQuery('') }} className="ml-2 text-amber-400 hover:underline">Clear</button>
+                  </div>
+                )}
 
                 {showUpload && (
                   <div className="mb-6">
@@ -609,71 +1140,184 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                   </div>
                 )}
 
-                {/* My files - Google Drive style grid */}
-                {documents.length === 0 ? (
+                {documents.length === 0 && !searchResults ? (
                   <div className="mb-8 flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900 py-16">
                     <FolderOpen className="mb-4 h-12 w-12 text-zinc-700" />
-                    <p className="text-sm text-zinc-500">Chưa có tài liệu nào</p>
-                    <button onClick={() => setShowUpload(true)}
-                      className="mt-4 rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400 transition-colors">
-                      Tải lên ngay
-                    </button>
+                    <p className="text-sm text-zinc-500">
+                      {navMode === 'trash' ? 'Trash is empty' : navMode === 'starred' ? 'No favorite documents' : 'No documents yet'}
+                    </p>
+                    {navMode !== 'trash' && (
+                      <button onClick={() => setShowUpload(true)}
+                        className="mt-4 rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400 transition-colors">
+                        Tải lên ngay
+                      </button>
+                    )}
                   </div>
                 ) : viewMode === 'grid' ? (
                   <div className="mb-8">
-                    <p className="mb-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">My Files ({documents.length})</p>
+                    {navMode === 'all' && <p className="mb-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">My Files ({documents.length})</p>}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {documents.map(doc => (
-                        <div
-                          key={doc.id}
-                          onClick={() => selectDoc(doc)}
-                          className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-700 transition-all"
-                        >
-                          <div className="mb-3 flex items-center justify-between">
-                            <FileText className="h-10 w-10 text-zinc-500" />
-                            <div className="flex gap-1">
-                              {doc.is_ai_verified && <CheckCircle className="h-4 w-4 text-blue-400" />}
-                              {doc.is_onchain && <Link2 className="h-4 w-4 text-emerald-400" />}
+                      {getDisplayItems(documents, navMode === 'all' ? folders : []).map(item => {
+                        if (item.type === 'folder') {
+                          if (item.folderEntity) {
+                            const folder = item.folderEntity
+                            return (
+                              <div
+                                key={item.key}
+                                onClick={() => navigateToFolder(folder.id)}
+                                onContextMenu={e => handleContextMenu(e, item)}
+                                className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-700 transition-all"
+                              >
+                                <div className="mb-3 flex items-center justify-between">
+                                  <FolderOpen className="h-10 w-10 text-amber-500" />
+                                </div>
+                                <p className="truncate text-sm font-medium text-zinc-200">{folder.name}</p>
+                                <p className="mt-1 text-[10px] text-zinc-500">
+                                  {new Date(folder.created_at).toLocaleDateString('vi-VN')}
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-1">
+                                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">folder</span>
+                                </div>
+                              </div>
+                            )
+                          }
+                          const latest = item.docs!.reduce((a, b) => a.created_at > b.created_at ? a : b)
+                          return (
+                            <div
+                              key={item.key}
+                              onClick={() => setPreviewDoc(item.docs![0])}
+                              onContextMenu={e => handleContextMenu(e, item)}
+                              className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-700 transition-all"
+                            >
+                              <div className="mb-3 flex items-center justify-between">
+                                <FolderOpen className="h-10 w-10 text-amber-500" />
+                                <div className="flex items-center gap-1">
+                                  <button onClick={e => { e.stopPropagation(); toggleFolderExpand(item.key); }}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <svg className={`h-4 w-4 ${expandedFolder === item.key ? 'text-amber-400' : 'text-zinc-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path d={expandedFolder === item.key ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  </button>
+                                  <button onClick={e => handleToggleStarFolder(e, item.docs!)}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <svg className={`h-4 w-4 ${item.docs![0].is_starred ? 'text-amber-400 fill-amber-400' : 'text-zinc-600'}`} viewBox="0 0 24 24">
+                                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+                              <p className="truncate text-sm font-medium text-zinc-200">{item.folderName}</p>
+                              <p className="mt-1 text-[10px] text-zinc-500">
+                                {item.docs!.length} files · {new Date(latest.created_at).toLocaleDateString('vi-VN')}
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-1">
+                                <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">folder</span>
+                              </div>
+                              <div className="mt-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                <button onClick={() => setPreviewDoc(item.docs![0])}
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                  <Eye className="h-3 w-3" /> Preview
+                                </button>
+                                <button onClick={() => handleStoreFolderOnChain(item.docs![0].folder_group!)}
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-amber-400 hover:bg-amber-500/10 transition-colors">
+                                  <Link2 className="h-3 w-3" /> Chain
+                                </button>
+                                <button onClick={() => { setShareDialogResourceLabel(`📁 ${item.folderName}`); setShareDialogDoc(item.docs![0]) }}
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                  <Share2 className="h-3 w-3" /> Share
+                                </button>
+                                <button onClick={() => handleDeleteFolder(item.docs![0].folder_group!)}
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                  <Trash2 className="h-3 w-3" /> Delete
+                                </button>
+                              </div>
+                              {expandedFolder === item.key && item.docs && (
+                                <div className="mt-3 border-t border-zinc-800 pt-2 space-y-1">
+                                  {item.docs.map(d => (
+                                    <div key={d.id} onClick={e => { e.stopPropagation(); setPreviewDoc(d) }}
+                                      className="flex items-center gap-2 rounded-md px-2 py-1 text-[10px] text-zinc-400 hover:bg-zinc-800 cursor-pointer transition-colors">
+                                      <FileText className="h-3 w-3 flex-shrink-0" />
+                                      <span className="truncate">{d.relative_path?.split('/').slice(1).join('/') || d.title}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        }
+                        const doc = item.doc!
+                        return (
+                          <div
+                            key={doc.id}
+                            onClick={() => selectDoc(doc)}
+                            onContextMenu={e => handleContextMenu(e, item)}
+                            className={`group cursor-pointer rounded-xl border p-4 transition-all ${
+                              doc.is_starred
+                                ? 'border-amber-500/30 bg-amber-500/5'
+                                : 'border-zinc-800 bg-zinc-900 hover:border-zinc-700'
+                            }`}
+                          >
+                            <div className="mb-3 flex items-center justify-between">
+                              <FileText className="h-10 w-10 text-zinc-500" />
+                              <div className="flex items-center gap-1">
+                                <button onClick={e => handleToggleStar(e, doc)}
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <svg className={`h-4 w-4 ${doc.is_starred ? 'text-amber-400 fill-amber-400' : 'text-zinc-600'}`} viewBox="0 0 24 24">
+                                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                  </svg>
+                                </button>
+                                {doc.is_ai_verified && <CheckCircle className="h-4 w-4 text-blue-400" />}
+                                {doc.is_onchain && <Link2 className="h-4 w-4 text-emerald-400" />}
+                              </div>
+                            </div>
+                            <p className="truncate text-sm font-medium text-zinc-200">{doc.title}</p>
+                            <p className="mt-1 text-[10px] text-zinc-500">
+                              {doc.file_size ? formatStorage(doc.file_size) : ''}
+                              {doc.file_size ? ' · ' : ''}
+                              {new Date(doc.created_at).toLocaleDateString('vi-VN')}
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-1">
+                              <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">
+                                {doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || 'file'}
+                              </span>
+                            </div>
+                            <div className="mt-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                              <button onClick={() => setPreviewDoc(doc)}
+                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                <Eye className="h-3 w-3" /> Preview
+                              </button>
+                              {navMode === 'trash' ? (
+                                <button onClick={() => restoreDocument(token, doc.id).then(() => loadDocs())}
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+                                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" strokeWidth="2"/><circle cx="12" cy="12" r="3" strokeWidth="2"/></svg> Restore
+                                </button>
+                              ) : (
+                                <>
+                                  <button onClick={() => setShareDialogDoc(doc)}
+                                    className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                    <Share2 className="h-3 w-3" /> Share
+                                  </button>
+                                  {!doc.is_onchain && (
+                                    <button onClick={() => handleStoreOnChain(doc)}
+                                      className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                      <Link2 className="h-3 w-3" /> Chain
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              <button onClick={() => handleDeleteDoc(doc)}
+                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                <Trash2 className="h-3 w-3" /> {navMode === 'trash' ? 'Delete permanently' : 'Delete'}
+                              </button>
                             </div>
                           </div>
-                          <p className="truncate text-sm font-medium text-zinc-200">{doc.title}</p>
-                          <p className="mt-1 text-[10px] text-zinc-500">
-                            {doc.file_size ? formatStorage(doc.file_size) : ''}
-                            {doc.file_size ? ' · ' : ''}
-                            {new Date(doc.created_at).toLocaleDateString('vi-VN')}
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-1">
-                            <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">
-                              {doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || 'file'}
-                            </span>
-                          </div>
-                          <div className="mt-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                            <button onClick={() => setPreviewDoc(doc)}
-                              className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                              <Eye className="h-3 w-3" /> Preview
-                            </button>
-                            <button onClick={() => setShareDialogDoc(doc)}
-                              className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                              <Share2 className="h-3 w-3" /> Share
-                            </button>
-                            {!doc.is_onchain && (
-                              <button onClick={() => handleStoreOnChain(doc)}
-                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                <Link2 className="h-3 w-3" /> Chain
-                              </button>
-                            )}
-                            <button onClick={() => handleDeleteDoc(doc)}
-                              className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
-                              <Trash2 className="h-3 w-3" /> Delete
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 ) : (
                   <div className="mb-8">
-                    <p className="mb-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">My Files ({documents.length})</p>
+                    {navMode === 'all' && <p className="mb-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">My Files ({documents.length})</p>}
                     <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
                       <table className="w-full text-sm">
                         <thead>
@@ -686,92 +1330,168 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                           </tr>
                         </thead>
                         <tbody>
-                          {documents.map(doc => (
-                            <tr key={doc.id} className="border-b border-zinc-800/60 hover:bg-zinc-800/50 transition-colors">
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
-                                  <FileText className="h-4 w-4 text-zinc-500 flex-shrink-0" />
-                                  <span className="truncate max-w-[200px] font-medium text-zinc-200">{doc.title}</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-xs text-zinc-500">{doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || 'unknown'}</td>
-                              <td className="px-4 py-3 text-xs text-zinc-500">{doc.file_size ? formatStorage(doc.file_size) : '-'}</td>
-                              <td className="px-4 py-3 text-xs text-zinc-500">{new Date(doc.created_at).toLocaleDateString('vi-VN')}</td>
-                              <td className="px-4 py-3">
-                                <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-                                  <button title="Preview" onClick={() => setPreviewDoc(doc)}
-                                    className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                    <Eye className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button title="Share" onClick={() => setShareDialogDoc(doc)}
-                                    className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                    <Share2 className="h-3.5 w-3.5" />
-                                  </button>
-                                  {!doc.is_onchain && (
-                                    <button title="Store On-Chain" onClick={() => handleStoreOnChain(doc)}
-                                      className="flex h-7 w-7 items-center justify-center rounded-md text-amber-500 hover:bg-amber-500/10 transition-colors">
-                                      <Link2 className="h-3.5 w-3.5" />
+                          {getDisplayItems(documents, navMode === 'all' ? folders : []).map(item => {
+                            if (item.type === 'folder') {
+                              if (item.folderEntity) {
+                                const folder = item.folderEntity
+                                return (
+                                  <tr key={item.key} className="border-b border-zinc-800/60 hover:bg-zinc-800/50 transition-colors cursor-pointer" onClick={() => navigateToFolder(folder.id)} onContextMenu={e => handleContextMenu(e, item)}>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <FolderOpen className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                                        <span className="truncate max-w-[200px] font-medium text-zinc-200">{folder.name}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-zinc-500">folder</td>
+                                    <td className="px-4 py-3 text-xs text-zinc-500">-</td>
+                                    <td className="px-4 py-3 text-xs text-zinc-500">{new Date(folder.created_at).toLocaleDateString('vi-VN')}</td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                        <button title="Preview" onClick={() => navigateToFolder(folder.id)}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                          <Eye className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )
+                              }
+                              const latest = item.docs!.reduce((a, b) => a.created_at > b.created_at ? a : b)
+                              return (
+                                <tr key={item.key} className="border-b border-zinc-800/60 hover:bg-zinc-800/50 transition-colors" onContextMenu={e => handleContextMenu(e, item)}>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <FolderOpen className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                                      <span className="truncate max-w-[200px] font-medium text-zinc-200">{item.folderName}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-zinc-500">folder</td>
+                                  <td className="px-4 py-3 text-xs text-zinc-500">{item.docs!.length} files</td>
+                                  <td className="px-4 py-3 text-xs text-zinc-500">{new Date(latest.created_at).toLocaleDateString('vi-VN')}</td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                      <button title="Preview" onClick={() => setPreviewDoc(item.docs![0])}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button title="Store On-Chain" onClick={() => handleStoreFolderOnChain(item.docs![0].folder_group!)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-amber-500 hover:bg-amber-500/10 transition-colors">
+                                        <Link2 className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button title="Add to Favorites" onClick={e => handleToggleStarFolder(e, item.docs!)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        <svg className={`h-3.5 w-3.5 ${item.docs![0].is_starred ? 'text-amber-400 fill-amber-400' : ''}`} viewBox="0 0 24 24">
+                                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                        </svg>
+                                      </button>
+                                      <button title="Share" onClick={() => { setShareDialogResourceLabel(`📁 ${item.folderName}`); setShareDialogDoc(item.docs![0]) }}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        <Share2 className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button title="Delete" onClick={() => handleDeleteFolder(item.docs![0].folder_group!)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            }
+                            const doc = item.doc!
+                            return (
+                              <tr key={doc.id} className={`border-b border-zinc-800/60 transition-colors ${doc.is_starred ? 'bg-amber-500/5' : 'hover:bg-zinc-800/50'}`} onContextMenu={e => handleContextMenu(e, item)}>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+                                    <span className="truncate max-w-[200px] font-medium text-zinc-200">{doc.title}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-xs text-zinc-500">{doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || 'unknown'}</td>
+                                <td className="px-4 py-3 text-xs text-zinc-500">{doc.file_size ? formatStorage(doc.file_size) : '-'}</td>
+                                <td className="px-4 py-3 text-xs text-zinc-500">{new Date(doc.created_at).toLocaleDateString('vi-VN')}</td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                    <button title="Preview" onClick={() => setPreviewDoc(doc)}
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                      <Eye className="h-3.5 w-3.5" />
                                     </button>
-                                  )}
-                                  <button title="Delete" onClick={() => handleDeleteDoc(doc)}
-                                    className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
+                                    <button title="Add to Favorites" onClick={e => handleToggleStar(e, doc)}
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                      <svg className={`h-3.5 w-3.5 ${doc.is_starred ? 'text-amber-400 fill-amber-400' : ''}`} viewBox="0 0 24 24">
+                                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                      </svg>
+                                    </button>
+                                    <button title="Share" onClick={() => setShareDialogDoc(doc)}
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                      <Share2 className="h-3.5 w-3.5" />
+                                    </button>
+                                    {!doc.is_onchain && (
+                                      <button title="Store On-Chain" onClick={() => handleStoreOnChain(doc)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-amber-500 hover:bg-amber-500/10 transition-colors">
+                                        <Link2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
+                                    <button title="Delete" onClick={() => handleDeleteDoc(doc)}
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
                   </div>
                 )}
 
-                {/* Shared with me board */}
-                <div>
-                  <div className="mb-3 flex items-center gap-2">
-                    <Share2 className="h-4 w-4 text-amber-500" />
-                    <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Shared with me ({sharedDocs.length})</p>
-                  </div>
-                  {sharedDocs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900 py-12">
-                      <Users className="mb-3 h-8 w-8 text-zinc-700" />
-                      <p className="text-xs text-zinc-500">Chưa có tài liệu nào được chia sẻ với bạn</p>
+                {navMode === 'all' && (
+                  <div>
+                    <div className="mb-3 flex items-center gap-2">
+                      <Share2 className="h-4 w-4 text-amber-500" />
+                      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Shared with me ({sharedDocs.length})</p>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {sharedDocs.map(doc => (
-                        <div
-                          key={doc.share_id || doc.id}
-                          onClick={() => setPreviewDoc(doc)}
-                          className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-amber-500/40 transition-all"
-                        >
-                          <div className="mb-3 flex items-center justify-between">
-                            <FileText className="h-8 w-8 text-zinc-500" />
-                            <div className="flex items-center gap-1">
-                              {doc.permission === 'edit' ? (
-                                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-medium text-amber-400">Edit</span>
-                              ) : (
-                                <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[9px] font-medium text-blue-400">View</span>
-                              )}
+                    {sharedDocs.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900 py-12">
+                        <Users className="mb-3 h-8 w-8 text-zinc-700" />
+                        <p className="text-xs text-zinc-500">Chưa có tài liệu nào được chia sẻ với bạn</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {sharedDocs.map(doc => (
+                          <div
+                            key={doc.share_id || doc.id}
+                            onClick={() => openSharedDoc(doc)}
+                            className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-amber-500/40 transition-all"
+                          >
+                            <div className="mb-3 flex items-center justify-between">
+                              <FileText className="h-8 w-8 text-zinc-500" />
+                              <div className="flex items-center gap-1">
+                                {doc.permission === 'edit' ? (
+                                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-medium text-amber-400">Edit</span>
+                                ) : (
+                                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[9px] font-medium text-blue-400">View</span>
+                                )}
+                              </div>
+                            </div>
+                            <p className="truncate text-sm font-medium text-zinc-200">{doc.title}</p>
+                            <p className="mt-1 truncate text-[10px] text-zinc-500">
+                              from <span className="font-mono text-zinc-400">{doc.shared_by?.slice(0, 6)}...{doc.shared_by?.slice(-4)}</span>
+                            </p>
+                            <p className="text-[10px] text-zinc-600">{doc.shared_at ? new Date(doc.shared_at).toLocaleDateString('vi-VN') : ''}</p>
+                            <div className="mt-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                              <button onClick={() => openSharedDoc(doc)}
+                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                <Eye className="h-3 w-3" /> Preview
+                              </button>
                             </div>
                           </div>
-                          <p className="truncate text-sm font-medium text-zinc-200">{doc.title}</p>
-                          <p className="mt-1 truncate text-[10px] text-zinc-500">
-                            from <span className="font-mono text-zinc-400">{doc.shared_by?.slice(0, 6)}...{doc.shared_by?.slice(-4)}</span>
-                          </p>
-                          <p className="text-[10px] text-zinc-600">{doc.shared_at ? new Date(doc.shared_at).toLocaleDateString('vi-VN') : ''}</p>
-                          <div className="mt-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                            <button onClick={() => setPreviewDoc(doc)}
-                              className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                              <Eye className="h-3 w-3" /> Preview
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

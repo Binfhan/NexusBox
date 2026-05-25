@@ -5,12 +5,12 @@ async function seed(dataSource: DataSource) {
 
   // 1. Plans — BẮT BUỘC, app không chạy được nếu thiếu
   await dataSource.query(`
-    INSERT INTO plans (name, display_name, max_bytes, max_docs, price_usd)
+    INSERT INTO plans (name, max_bytes, max_docs, price_usd)
     VALUES
-      ('free',       'Free',        209715200,    50,   0.00),
-      ('pro',        'Pro',         5368709120,   500,  19.00),
-      ('business',   'Business',    21474836480,  2000, 79.00),
-      ('enterprise', 'Enterprise',  107374182400, -1,   299.00)
+      ('free',       209715200,    50,   0.00),
+      ('pro',        5368709120,   500,  19.00),
+      ('business',   21474836480,  2000, 79.00),
+      ('enterprise', 107374182400, -1,   299.00)
     ON CONFLICT (name) DO NOTHING;
   `);
 

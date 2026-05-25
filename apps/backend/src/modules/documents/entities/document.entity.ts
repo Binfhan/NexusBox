@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Folder } from './folder.entity';
 
 @Entity('documents')
 export class Document {
@@ -15,6 +16,13 @@ export class Document {
 
   @Column({ type: 'varchar', nullable: true })
   title: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  parent_folder_id: string;
+
+  @ManyToOne(() => Folder, { nullable: true })
+  @JoinColumn({ name: 'parent_folder_id' })
+  parent_folder: Folder;
 
   @Column({ type: 'varchar', nullable: true })
   relative_path: string;
@@ -46,8 +54,14 @@ export class Document {
   @Column({ type: 'boolean', default: false })
   is_onchain: boolean;
 
-  @Column({ type: 'varchar', default: 'pending' }) // pending, processed, failed
+  @Column({ type: 'boolean', default: false })
+  is_starred: boolean;
+
+  @Column({ type: 'varchar', default: 'pending' })
   status: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  deleted_at: Date;
 
   @CreateDateColumn()
   created_at: Date;

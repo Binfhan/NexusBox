@@ -1,4 +1,5 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Plan } from './plan.entity';
 
 @Entity('users')
 export class User {
@@ -11,7 +12,14 @@ export class User {
   @Column({ type: 'varchar' })
   nonce: string;
 
-  @Column({ type: 'bigint', default: 1073741824 })
+  @Column({ type: 'int', nullable: true })
+  plan_id: number;
+
+  @ManyToOne(() => Plan)
+  @JoinColumn({ name: 'plan_id' })
+  plan: Plan;
+
+  @Column({ type: 'bigint', default: 209715200 })
   storage_limit: number;
 
   @Column({ type: 'bigint', default: 0 })

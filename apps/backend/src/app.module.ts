@@ -8,8 +8,12 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BlockchainModule } from './modules/blockchain/blockchain.module';
 import { User } from './modules/users/entities/user.entity';
+import { Plan } from './modules/users/entities/plan.entity';
 import { Document } from './modules/documents/entities/document.entity';
 import { DocumentShare } from './modules/documents/entities/document-share.entity';
+import { DocumentVersion } from './modules/documents/entities/document-version.entity';
+import { Folder } from './modules/documents/entities/folder.entity';
+import { PlanSeedService } from './database/seeds/plan-seed.service';
 
 @Module({
   imports: [
@@ -24,16 +28,17 @@ import { DocumentShare } from './modules/documents/entities/document-share.entit
         username: configService.get<string>('DB_USERNAME', 'postgres'),
         password: configService.get<string>('DB_PASSWORD', 'binhan2004'),
         database: configService.get<string>('DB_NAME', 'docvault_db'),
-        entities: [User, Document, DocumentShare],
-        synchronize: true, // Turned off because tables are already created manually
+        entities: [User, Plan, Document, DocumentShare, DocumentVersion, Folder],
+        synchronize: true,
       }),
     }),
+    TypeOrmModule.forFeature([Plan]),
     UsersModule,
     DocumentsModule,
     AuthModule,
     BlockchainModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, PlanSeedService],
 })
 export class AppModule {}

@@ -130,7 +130,6 @@ Backend hiện tại đã được khởi tạo bằng NestJS với các depende
 > 2. Backend tự listen qua Event sẽ bảo mật hơn
 > 3. đã có nằm trong .env ở contracts hay check và sử dụng
 
-
 Kế hoạch triển khai Frontend & Backend - Phase 2 (Intelligence)
 Trong Phase 2, chúng ta sẽ mở rộng khả năng xử lý AI (Hỏi đáp, Trích xuất, So sánh) và xây dựng giao diện trực quan cho người dùng.
 
@@ -157,7 +156,71 @@ IMPORTANT
 
 Câu hỏi chờ xác nhận cho Phase 2:
 
-Về tính năng RAG (Smart Q&A), do file có thể rất dài,  cài đặt thư viện pgvector 
+Về tính năng RAG (Smart Q&A), do file có thể rất dài, cài đặt thư viện pgvector
 Giao diện Frontend (React): Bạn có muốn tôi sử dụng bộ component UI nào (như shadcn/ui, Radix UI) để xây dựng nhanh các bảng biểu và modal không, hay code Tailwind thuần- Phương án nào tốt thì làm
 Trong Phase 2 này, tôi sẽ ưu tiên code các UI Component (trên Frontend) trước để bạn có hình dung trực quan nhất, sau đó kết nối với API backend. Bạn đồng ý với cách tiếp cận này chứ?
 Vui lòng xem và cho tôi phản hồi để tôi bắt đầu code Phase 2!
+
+Now Plan
+Đủ thông tin rồi. Mình sẽ phân tích và vẽ toàn bộ feature map + kiến trúc cho Zane.
+::view-transition-group(_),
+::view-transition-old(_),
+::view-transition-new(\*) {
+animation-duration: 0.25s;
+animation-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+}
+VvisualizeVvisualize show_widget
+Chi tiết từng nhóm tính năng / Feature breakdown
+
+Nhóm 1 — File + Folder tree (như Google Drive)
+DB Schema cần thêm:
+sql-- Thêm vào bảng documents hiện tại
+ALTER TABLE documents ADD COLUMN parent_folder_id UUID REFERENCES folders(id);
+ALTER TABLE documents ADD COLUMN is_starred BOOLEAN DEFAULT false;
+ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMPTZ; -- soft delete
+
+-- Bảng mới: folders
+CREATE TABLE folders (
+id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+name TEXT NOT NULL,
+parent_id UUID REFERENCES folders(id), -- nested folders
+owner_wallet TEXT NOT NULL,
+created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Bảng mới: version history
+CREATE TABLE document_versions (
+id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+document_id UUID REFERENCES documents(id),
+version_num INT NOT NULL,
+ipfs_cid TEXT NOT NULL, -- CID của version này
+tx_hash TEXT, -- on-chain proof nếu cần
+created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+Nhóm 2 — Share + Permission (như Google Drive)
+Google Drive có 5 level: Manager → Content Manager → Contributor → Commenter → Viewer. DocVault map thành:
+typescript// permission.entity.ts
+enum PermissionLevel {
+OWNER = 'owner', // full control
+EDITOR = 'editor', // read + write
+COMMENTER = 'commenter', // đọc + comment (AI Q&A)
+VIEWER = 'viewer', // chỉ xem
+}
+
+// share.entity.ts
+@Entity('shares')
+export class Share {
+@Column() targetWallet: string; // ví được share
+@Column() targetEmail: string; // hoặc email thường
+@Column() resourceId: string; // document/folder id
+@Column() resourceType: 'file'|'folder';
+@Column() permission: PermissionLevel;
+@Column({ nullable: true }) expiresAt: Date; // hết hạn tự động
+@Column({ nullable: true }) password: string; // bảo vệ bằng password
+@Column() token: string; // UUID cho share link
+@Column({ default: true }) isActive: boolean;
+}
+
+Nhóm 3 — UX tính năng cần có
+Tính năngGoogle Drive làm saoDocVault làm saoPreview fileMở inline trong browserreact-pdf cho PDF, <img> cho ảnh, mammoth.js cho DOCXSearchFull-text search theo tênPostgreSQL tsvector + AI semantic searchStarredClick ngôi saois_starred = true trong DBRecentXem file gần đâyORDER BY last_accessed_at DESCTrashXóa mềm 30 ngàydeleted_at IS NOT NULL → filter raDrag & dropKéo vào folderreact-dnd hoặc dnd-kitRight-click menuContext menuCustom dropdown componentGrid / List viewToggle layoutState `viewMode: 'grid'

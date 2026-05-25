@@ -12,6 +12,7 @@ interface Document {
   file_size?: number
   mime_type?: string
   relative_path?: string
+  folder_group?: string
   content_text?: string
   created_at: string
   shared_by?: string
@@ -44,7 +45,10 @@ function FolderTree({ docs, currentPath }: { docs: Document[]; currentPath: stri
   })
 
   const filesHere = currentPath
-    ? directChildren.filter(d => d.relative_path === prefix.slice(0, -1))
+    ? directChildren.filter(d => {
+        const rest = d.relative_path!.slice(prefix.length)
+        return rest.length > 0 && !rest.includes('/')
+      })
     : docs.filter(d => !d.relative_path)
 
   const [openFolders, setOpenFolders] = React.useState<Set<string>>(new Set())
@@ -95,10 +99,14 @@ export function FilePreviewModal({ doc, allDocs = [], onClose, onDelete }: FileP
     d.relative_path && d.relative_path.length > 0
   )
 
+  const folderRootName = folderDocs.length > 0
+    ? (folderDocs.find(d => d.relative_path)?.relative_path?.split('/')[0] || '')
+    : ''
+
   const base64Data = doc.content_text || ''
   const isImage = doc.mime_type?.startsWith('image/')
   const isPdf = doc.mime_type === 'application/pdf'
-  const isFolder = doc.folder_group && folderDocs.length > 1
+  const isFolder = doc.folder_group && folderDocs.length > 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
@@ -160,7 +168,7 @@ export function FilePreviewModal({ doc, allDocs = [], onClose, onDelete }: FileP
             <div className="mb-6">
               <p className="mb-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Folder contents</p>
               <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 max-h-[40vh] overflow-y-auto">
-                <FolderTree docs={allDocs} currentPath={doc.relative_path || ''} />
+                <FolderTree docs={allDocs} currentPath={folderRootName} />
               </div>
             </div>
           ) : (

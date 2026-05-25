@@ -1,4 +1,4 @@
-import { Controller, Post, Get, UseGuards, UseInterceptors, UploadedFile, Req, BadRequestException, Param, Body, Delete } from '@nestjs/common';
+import { Controller, Post, Get, Patch, UseGuards, UseInterceptors, UploadedFile, Req, BadRequestException, Param, Body, Delete, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -11,12 +11,11 @@ export class DocumentsController {
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadDocument(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
-    if (!file) {
-      throw new BadRequestException('No file uploaded');
-    }
+    if (!file) throw new BadRequestException('No file uploaded');
     const fileText = file.buffer.toString('base64');
     const relativePath = req.body?.relative_path || '';
     const folderGroup = req.body?.folder_group || '';
+    const parentFolderId = req.body?.parent_folder_id || '';
     return this.documentsService.processAndUploadDocument(
       req.user.wallet_address,
       file.buffer,
@@ -24,13 +23,34 @@ export class DocumentsController {
       file.mimetype,
       fileText,
       relativePath,
-      folderGroup
+      folderGroup,
+      parentFolderId,
     );
   }
 
   @Get()
-  async getMyDocuments(@Req() req: any) {
-    return this.documentsService.getDocumentsByWallet(req.user.wallet_address);
+  async getMyDocuments(
+    @Query('folder_id') folderId: string | undefined,
+    @Query('deleted') deleted: string | undefined,
+    @Query('starred') starred: string | undefined,
+    @Query('recent') recent: string | undefined,
+    @Req() req: any,
+  ) {
+    if (deleted === 'true') {
+      return this.documentsService.getTrash(req.user.wallet_address);
+    }
+    if (starred === 'true') {
+      return this.documentsService.getStarred(req.user.wallet_address);
+    }
+    if (recent === 'true') {
+      return this.documentsService.getRecent(req.user.wallet_address);
+    }
+    return this.documentsService.getDocumentsByWallet(req.user.wallet_address, folderId);
+  }
+
+  @Get('search')
+  async search(@Query('q') q: string, @Req() req: any) {
+    return this.documentsService.search(req.user.wallet_address, q);
   }
 
   @Get('shared-with-me')
@@ -41,13 +61,24 @@ export class DocumentsController {
   @Post(':id/share')
   async shareDocument(
     @Param('id') id: string,
-    @Body('targetWallet') targetWallet: string,
-    @Body('targetUserId') targetUserId: number,
-    @Body('permission') permission: string,
+    @Body() body: { targetWallet?: string; targetUserId?: number; permission?: string; expiresAt?: string; password?: string },
     @Req() req: any,
   ) {
-    if (!targetWallet && !targetUserId) throw new BadRequestException('Target wallet or user ID is required');
-    return this.documentsService.shareDocument(id, req.user.wallet_address, targetWallet, targetUserId, permission || 'view');
+    if (!body.targetWallet && !body.targetUserId) throw new BadRequestException('Target wallet or user ID is required');
+    return this.documentsService.shareDocument(
+      id, req.user.wallet_address, body.targetWallet, body.targetUserId,
+      body.permission || 'viewer', body.expiresAt, body.password,
+    );
+  }
+
+  @Get('share/:token')
+  async getShareByToken(@Param('token') token: string) {
+    return this.documentsService.getShareByToken(token);
+  }
+
+  @Post('share/:shareId/verify-password')
+  async verifySharePassword(@Param('shareId') shareId: string, @Body('password') password: string) {
+    return this.documentsService.verifyPassword(shareId, password);
   }
 
   @Delete('share/:shareId')
@@ -65,6 +96,26 @@ export class DocumentsController {
     return this.documentsService.getStorageInfo(req.user.wallet_address);
   }
 
+  @Patch(':id/star')
+  async toggleStar(@Param('id') id: string, @Body() body: { starred: boolean }, @Req() req: any) {
+    return this.documentsService.toggleStar(id, req.user.wallet_address, body.starred);
+  }
+
+  @Patch(':id/move')
+  async moveDocument(@Param('id') id: string, @Body() body: { parent_folder_id?: string }, @Req() req: any) {
+    return this.documentsService.moveDocument(id, req.user.wallet_address, body.parent_folder_id);
+  }
+
+  @Post(':id/restore')
+  async restoreDocument(@Param('id') id: string, @Req() req: any) {
+    return this.documentsService.restoreDocument(id, req.user.wallet_address);
+  }
+
+  @Get(':id/versions')
+  async getVersions(@Param('id') id: string) {
+    return this.documentsService.getDocumentVersions(id);
+  }
+
   @Post(':id/chat')
   async chatWithDocument(
     @Param('id') id: string,
@@ -76,10 +127,7 @@ export class DocumentsController {
   }
 
   @Post('compare')
-  async compareDocuments(
-    @Body('id1') id1: string,
-    @Body('id2') id2: string,
-  ) {
+  async compareDocuments(@Body('id1') id1: string, @Body('id2') id2: string) {
     const comparison = await this.documentsService.compareDocuments(id1, id2);
     return { comparison };
   }

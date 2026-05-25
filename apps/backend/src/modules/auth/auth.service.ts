@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ethers } from 'ethers';
 import { User } from '../users/entities/user.entity';
+import { Plan } from '../users/entities/plan.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -11,6 +12,8 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(Plan)
+    private plansRepository: Repository<Plan>,
     private jwtService: JwtService,
   ) {}
 
@@ -25,7 +28,14 @@ export class AuthService {
       while (await this.usersRepository.findOne({ where: { user_id: userId } })) {
         userId = this.generateUniqueId();
       }
-      user = this.usersRepository.create({ wallet_address: address, nonce, user_id: userId });
+      const freePlan = await this.plansRepository.findOne({ where: { name: 'free' } });
+      user = this.usersRepository.create({
+        wallet_address: address,
+        nonce,
+        user_id: userId,
+        plan_id: freePlan?.id ?? undefined,
+        storage_limit: Number(freePlan?.max_bytes) || 209715200,
+      } as User);
     } else {
       user.nonce = nonce;
       if (!user.user_id) {
