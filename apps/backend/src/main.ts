@@ -1,9 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // ✅ enableCors PHẢI gọi TRƯỚC khi register bất kỳ middleware/pipe nào
   app.enableCors({
@@ -12,6 +14,10 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
+
+  // Serve uploaded files (avatars) under /uploads
+  const uploadsDir = join(__dirname, '..', 'uploads');
+  app.useStaticAssets(uploadsDir, { prefix: '/uploads/' });
 
   app.useGlobalPipes(
     new ValidationPipe({

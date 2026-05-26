@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { ethers } from 'ethers'
+import { Link } from 'react-router-dom'
 import {
   getDocuments,
   getSharedDocuments,
@@ -19,6 +20,7 @@ import {
   restoreDocument,
   getFolders,
   createFolder,
+  deleteFolder,
   getFolderBreadcrumb,
   verifySharePassword,
 } from '../lib/api'
@@ -37,7 +39,12 @@ import {
   Sparkles, CheckCircle,
   Users, FileSearch, Eye, Trash2, Upload,
   List, Grid3X3, FolderOpen, LayoutDashboard,
+  User, Settings, ExternalLink, LogOut,
+  Moon, Sun, Languages,
 } from 'lucide-react'
+
+import { useTheme } from '../contexts/ThemeContext'
+import { useLanguage } from '../contexts/LanguageContext'
 
 const CONTRACT_ADDRESS =
   import.meta.env.VITE_DOCVAULT_STORAGE_ADDRESS ||
@@ -72,15 +79,58 @@ interface Document {
 interface DashboardProps {
   token: string
   walletAddress: string
+  avatarUrl?: string | null
+  displayName?: string | null
+  ensName?: string | null
+  onNavigate?: (page: 'profile' | 'settings') => void
+  onDisconnect?: () => void
 }
 
 type SidebarTab = 'dashboard' | 'my-documents' | 'ai'
 
-export function Dashboard({ token, walletAddress }: DashboardProps) {
+function WalletAvatar({ avatarUrl, walletAddress, size = 'sm' }: {
+  avatarUrl?: string | null
+  walletAddress: string
+  size?: 'sm' | 'md' | 'lg'
+}) {
+  const [imgError, setImgError] = useState(false)
+  const sizeMap = { sm: 'w-10 h-10', md: 'w-10 h-10', lg: 'w-20 h-20' }
+  const sizeClass = sizeMap[size]
+
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        key={avatarUrl}
+        src={avatarUrl}
+        alt="avatar"
+        crossOrigin="anonymous"
+        onError={() => setImgError(true)}
+        className={`${sizeClass} rounded-full object-cover ring-2 ring-amber-500/30`}
+      />
+    )
+  }
+
+  return (
+    <div className={`${sizeClass} rounded-full bg-gradient-to-br
+                     from-amber-400 to-orange-600 flex items-center
+                     justify-center text-zinc-950 font-bold text-xs`}>
+      {walletAddress.slice(2, 4).toUpperCase()}
+    </div>
+  )
+}
+
+export function Dashboard({
+  token, walletAddress, avatarUrl, displayName, ensName, onNavigate, onDisconnect
+}: DashboardProps) {
+
+  const { theme, toggleTheme } = useTheme()
+  const { lang, setLang, t } = useLanguage()
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeTab, setActiveTab] = useState<SidebarTab>('dashboard')
   const [sidebarSubTab, setSidebarSubTab] = useState<'docs' | 'compare'>('docs')
+  const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false)
+  const sidebarMenuRef = useRef<HTMLDivElement>(null)
 
   const [documents, setDocuments] = useState<Document[]>([])
   const [sharedDocs, setSharedDocs] = useState<Document[]>([])
@@ -423,6 +473,16 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
     return () => window.removeEventListener('click', close)
   }, [])
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (sidebarMenuRef.current && !sidebarMenuRef.current.contains(e.target as Node)) {
+        setSidebarMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   const handleContextMenu = (e: React.MouseEvent, item: any) => {
     e.preventDefault()
     e.stopPropagation()
@@ -510,9 +570,9 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
     : 0
 
   const sidebarItems: Array<{ id: SidebarTab; label: string; icon: React.ReactNode; badge?: string | number }> = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
-    { id: 'my-documents', label: 'My Documents', icon: <FolderOpen className="h-4 w-4" />, badge: documents.length },
-    { id: 'ai', label: 'AI Analysis', icon: <Brain className="h-4 w-4" /> },
+    { id: 'dashboard', label: t('sidebar.dashboard'), icon: <LayoutDashboard className="h-4 w-4" /> },
+    { id: 'my-documents', label: t('sidebar.my_documents'), icon: <FolderOpen className="h-4 w-4" />, badge: documents.length },
+    { id: 'ai', label: t('sidebar.ai_analysis'), icon: <Brain className="h-4 w-4" /> },
   ]
 
   const filteredDocs = documents.filter(doc => {
@@ -525,7 +585,7 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
   })
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-100 overflow-hidden">
+    <div className="flex min-h-0 flex-1 bg-background text-foreground overflow-hidden">
 
       <CommandPalette onAction={handleCommandAction} />
 
@@ -541,25 +601,25 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
 
       {passwordVerificationDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setPasswordVerificationDoc(null); setPasswordVerificationShareId(null) }}>
-          <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="mb-4 flex items-center gap-2">
               <Lock className="h-5 w-5 text-amber-500" />
-              <h2 className="text-base font-semibold text-zinc-100">Mật khẩu yêu cầu</h2>
+              <h2 className="text-base font-semibold text-foreground">{t('dashboard.password_required')}</h2>
             </div>
-            <p className="mb-4 text-sm text-zinc-400">
-              Tài liệu này được bảo vệ bằng mật khẩu. Vui lòng nhập mật khẩu để xem.
+            <p className="mb-4 text-sm text-muted-foreground">
+              {t('dashboard.password_protected_message')}
             </p>
             <input type="password" value={passwordInput} onChange={e => { setPasswordInput(e.target.value); setPasswordError('') }}
-              placeholder="Nhập mật khẩu..."
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-amber-500 transition-colors mb-3" />
+              placeholder={t('dashboard.enter_password')}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-amber-500 transition-colors mb-3" />
             {passwordError && <p className="mb-3 text-xs text-red-400">{passwordError}</p>}
             <div className="flex gap-2">
               <button onClick={() => { setPasswordVerificationDoc(null); setPasswordVerificationShareId(null); setPasswordError(''); setPasswordInput('') }}
-                className="flex-1 rounded-lg border border-zinc-700 py-2.5 text-sm font-medium text-zinc-400 hover:bg-zinc-800 transition-colors">
-                Hủy
+                className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors">
+                {t('dashboard.cancel')}
               </button>
               <button onClick={async () => {
-                if (!passwordInput) { setPasswordError('Vui lòng nhập mật khẩu'); return }
+                if (!passwordInput) { setPasswordError(t('dashboard.password_required_error')); return }
                 setIsVerifyingPassword(true)
                 setPasswordError('')
                 try {
@@ -569,13 +629,13 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                   setPasswordVerificationShareId(null)
                   setPasswordInput('')
                 } catch (err: any) {
-                  setPasswordError(err.message || 'Sai mật khẩu')
+                  setPasswordError(err.message || t('dashboard.wrong_password'))
                 } finally {
                   setIsVerifyingPassword(false)
                 }
               }} disabled={isVerifyingPassword}
                 className="flex-1 rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-50 transition-colors">
-                {isVerifyingPassword ? 'Đang kiểm tra...' : 'Xác nhận'}
+                {isVerifyingPassword ? t('dashboard.verifying') : t('dashboard.confirm')}
               </button>
             </div>
           </div>
@@ -593,29 +653,29 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
 
       {contextMenu && (
         <div
-          className="fixed z-50 w-48 rounded-xl border border-zinc-700 bg-zinc-900 py-1.5 shadow-2xl"
+          className="fixed z-50 w-48 rounded-xl border border-border bg-card py-1.5 shadow-2xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={e => e.stopPropagation()}
         >
           {contextMenu.item.folderEntity && (
             <button onClick={() => { navigateToFolder(contextMenu.item.folderEntity.id); setContextMenu(null) }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
-              <FolderOpen className="h-3.5 w-3.5 text-amber-500" /> Open folder
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors">
+              <FolderOpen className="h-3.5 w-3.5 text-amber-500" /> {t('dashboard.open_folder')}
             </button>
           )}
           {contextMenu.item.doc && (
             <button onClick={() => { setPreviewDoc(contextMenu.item.doc); setContextMenu(null) }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
-              <Eye className="h-3.5 w-3.5" /> Preview
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors">
+              <Eye className="h-3.5 w-3.5" /> {t('dashboard.preview')}
             </button>
           )}
           {contextMenu.item.docs && !contextMenu.item.folderEntity && (
             <button onClick={() => { setPreviewDoc(contextMenu.item.docs![0]); setContextMenu(null) }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
-              <Eye className="h-3.5 w-3.5" /> Preview
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors">
+              <Eye className="h-3.5 w-3.5" /> {t('dashboard.preview')}
             </button>
           )}
-          <div className="my-1 border-t border-zinc-800" />
+          <div className="my-1 border-t border-border" />
           {(contextMenu.item.doc || contextMenu.item.docs) && (
             <button onClick={async () => {
               setContextMenu(null)
@@ -631,9 +691,9 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                 setSharedDocs(prev => prev.map(d => docs.some((fd: Document) => fd.id === d.id) ? { ...d, is_starred: newStarred } : d))
               }
             }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors">
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-              {contextMenu.item.doc?.is_starred || contextMenu.item.docs?.[0]?.is_starred ? 'Unstar' : 'Star'}
+              {contextMenu.item.doc?.is_starred || contextMenu.item.docs?.[0]?.is_starred ? t('dashboard.unstar') : t('dashboard.star')}
             </button>
           )}
           {(contextMenu.item.doc || contextMenu.item.docs) && (
@@ -643,56 +703,70 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
               setShareDialogDoc(doc)
               if (contextMenu.item.docs) setShareDialogResourceLabel(`📁 ${contextMenu.item.folderName}`)
             }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
-              <Share2 className="h-3.5 w-3.5" /> Share
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors">
+              <Share2 className="h-3.5 w-3.5" /> {t('dashboard.share')}
             </button>
           )}
           {contextMenu.item.doc && !contextMenu.item.doc.is_onchain && (
             <button onClick={() => { setContextMenu(null); handleStoreOnChain(contextMenu.item.doc) }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
-              <Link2 className="h-3.5 w-3.5 text-amber-500" /> Store On-Chain
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors">
+              <Link2 className="h-3.5 w-3.5 text-amber-500" /> {t('dashboard.store_on_chain')}
             </button>
           )}
           {contextMenu.item.docs && !contextMenu.item.folderEntity && (
             <button onClick={() => { setContextMenu(null); handleStoreFolderOnChain(contextMenu.item.docs![0].folder_group!) }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors">
-              <Link2 className="h-3.5 w-3.5 text-amber-500" /> Store all On-Chain
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors">
+              <Link2 className="h-3.5 w-3.5 text-amber-500" /> {t('dashboard.store_all_on_chain')}
             </button>
           )}
-          <div className="my-1 border-t border-zinc-800" />
+          <div className="my-1 border-t border-border" />
           {contextMenu.item.folderEntity && (
             <button onClick={async () => {
+              const folder = contextMenu.item.folderEntity
               setContextMenu(null)
-              if (!window.confirm(`Xóa thư mục "${contextMenu.item.folderEntity.name}"?`)) return
+              if (!window.confirm(`Xóa thư mục "${folder.name}"?`)) return
+              try {
+                await deleteFolder(token, folder.id, true)
+                setFolders(prev => prev.filter(f => f.id !== folder.id))
+                if (currentFolderId === folder.id) {
+                  setCurrentFolderId(undefined)
+                  setBreadcrumb([])
+                  await loadDocs(undefined, 'all')
+                  await loadFolders(undefined)
+                }
+              } catch (err) {
+                console.error('Delete folder failed:', err)
+                alert('Xóa thư mục thất bại!')
+              }
             }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-zinc-800 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" /> Delete
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-accent transition-colors">
+              <Trash2 className="h-3.5 w-3.5" /> {t('dashboard.delete')}
             </button>
           )}
           {contextMenu.item.doc && (
             <button onClick={() => { setContextMenu(null); handleDeleteDoc(contextMenu.item.doc) }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-zinc-800 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" /> Delete
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-accent transition-colors">
+              <Trash2 className="h-3.5 w-3.5" /> {t('dashboard.delete')}
             </button>
           )}
           {contextMenu.item.docs && !contextMenu.item.folderEntity && (
             <button onClick={() => { setContextMenu(null); handleDeleteFolder(contextMenu.item.docs![0].folder_group!) }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-zinc-800 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" /> Delete folder
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-accent transition-colors">
+              <Trash2 className="h-3.5 w-3.5" /> {t('dashboard.delete_folder')}
             </button>
           )}
         </div>
       )}
 
       {/* ── SIDEBAR ── */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 border-r border-zinc-800 bg-zinc-950 transition-all duration-300 overflow-hidden`}>
+      <aside className={`${sidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 border-r border-border bg-background transition-all duration-300 overflow-hidden`}>
         <div className="flex h-full flex-col">
-          <div className="flex h-14 items-center gap-2 border-b border-zinc-800 px-4">
+          <Link to="/" className="flex h-14 items-center gap-2 border-b border-border px-4 hover:bg-accent/50 transition-colors">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500">
               <span className="text-[10px] font-bold text-zinc-950">DV</span>
             </div>
-            <span className="text-sm font-semibold text-zinc-100">DocVault</span>
-          </div>
+            <span className="text-sm font-semibold text-foreground">{t('dashboard.docvault')}</span>
+          </Link>
 
           <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
             {sidebarItems.map(item => (
@@ -702,54 +776,54 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   ${activeTab === item.id
                     ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent'
                   }`}
               >
                 {item.icon}
                 <span className="flex-1 text-left">{item.label}</span>
                 {item.badge !== undefined && (
-                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                     {item.badge}
                   </span>
                 )}
               </button>
             ))}
 
-            <div className="my-3 border-t border-zinc-800" />
+            <div className="my-3 border-t border-border" />
 
             <button onClick={() => { setNavMode('starred'); setActiveTab('my-documents'); loadDocs(undefined, 'starred') }}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${navMode === 'starred' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'}`}>
-              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Favorites
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${navMode === 'starred' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent'}`}>
+              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> {t('sidebar.favorites')}
             </button>
             <button onClick={() => { setNavMode('recent'); setActiveTab('my-documents'); loadDocs(undefined, 'recent') }}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${navMode === 'recent' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'}`}>
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2"/><path d="M12 6v6l4 2" strokeWidth="2" strokeLinecap="round"/></svg> Recent
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${navMode === 'recent' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent'}`}>
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2"/><path d="M12 6v6l4 2" strokeWidth="2" strokeLinecap="round"/></svg> {t('sidebar.recent')}
             </button>
             <button onClick={() => { setNavMode('trash'); setActiveTab('my-documents'); loadDocs(undefined, 'trash') }}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${navMode === 'trash' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'}`}>
-              <Trash2 className="h-4 w-4" /> Trash
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${navMode === 'trash' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent'}`}>
+              <Trash2 className="h-4 w-4" /> {t('sidebar.trash')}
             </button>
 
-            <div className="my-3 border-t border-zinc-800" />
+            <div className="my-3 border-t border-border" />
 
             <div className="flex items-center justify-between px-1">
-              <span className="text-sm font-medium text-zinc-400">Folders</span>
+              <span className="text-sm font-medium text-muted-foreground">{t('sidebar.folders')}</span>
               <div className="relative">
                 <button onClick={() => setShowFolderMenu(!showFolderMenu)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors" title="Tạo mới">
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" title="Tạo mới">
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" strokeWidth="2" strokeLinecap="round"/></svg>
                 </button>
                 {showFolderMenu && (
-                  <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
+                  <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-border bg-card py-1 shadow-xl">
                     <button onClick={() => { setShowFolderMenu(false); handleCreateFolder() }}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors">
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors">
                       <FolderOpen className="h-4 w-4 text-amber-500" />
-                      Tạo folder
+                      {t('sidebar.new_folder')}
                     </button>
                     <button onClick={() => { setShowFolderMenu(false); setShowUpload(true); setActiveTab('my-documents') }}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors">
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors">
                       <Upload className="h-4 w-4 text-amber-500" />
-                      Tải file lên
+                      {t('sidebar.upload_file')}
                     </button>
                   </div>
                 )}
@@ -758,26 +832,26 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
 
             {currentFolderId && (
               <button onClick={() => navigateToFolder(undefined)}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors border border-transparent">
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors border border-transparent">
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                Back to root
+                {t('dashboard.back_to_root')}
               </button>
             )}
 
             {folders.map(f => (
               <button key={f.id} onClick={() => navigateToFolder(f.id)}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${currentFolderId === f.id ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'}`}>
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${currentFolderId === f.id ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent'}`}>
                 <FolderOpen className="h-4 w-4 text-amber-500" />
                 <span className="truncate flex-1 text-left">{f.name}</span>
               </button>
             ))}
           </nav>
 
-          <div className="border-t border-zinc-800 px-4 py-4">
+          <div className="border-t border-border px-4 py-4">
             <div className="mb-2 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <HardDrive className="h-3.5 w-3.5" />
-                <span>Storage</span>
+                <span>{t('sidebar.storage')}</span>
               </div>
               {storageInfo && (
                 <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-medium text-amber-400 uppercase">
@@ -786,14 +860,14 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
               )}
             </div>
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-[10px] text-zinc-600">
+              <span className="text-[10px] text-muted-foreground">
                 {storageInfo ? `${formatStorage(storageInfo.storage_used)} / ${formatStorage(storageInfo.storage_limit)}` : '...'}
               </span>
-              <span className="text-[10px] text-zinc-600">
+              <span className="text-[10px] text-muted-foreground">
                 {storageInfo ? `${documents.length} / ${storageInfo.plan_max_docs === -1 ? '∞' : storageInfo.plan_max_docs} docs` : ''}
               </span>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
                   storagePct > 90 ? 'bg-red-500' : storagePct > 70 ? 'bg-amber-500' : 'bg-emerald-500'
@@ -801,15 +875,96 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                 style={{ width: `${storagePct}%` }}
               />
             </div>
-            <p className="mt-1 text-right text-[10px] text-zinc-600">{storagePct}% used</p>
+            <p className="mt-1 text-right text-[10px] text-muted-foreground">{storagePct}{t('dashboard.percent_used')}</p>
           </div>
 
-          <div className="border-t border-zinc-800 px-4 py-3">
-            <div className="flex items-center gap-2 rounded-full bg-zinc-900 px-3 py-1.5">
-              <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              <span className="truncate font-mono text-[10px] text-zinc-500">
-                {walletAddress}
-              </span>
+          <div className="border-t border-border px-3 py-2 flex items-center gap-1 justify-center">
+            <button
+              onClick={() => setLang(lang === 'vi' ? 'en' : 'vi')}
+              className="flex items-center gap-1 rounded-lg border border-border
+                         bg-card hover:bg-accent px-2.5 py-1.5 text-xs font-semibold
+                         text-foreground transition-colors flex-1 justify-center"
+              title={lang === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'}
+            >
+              <Languages className="h-3.5 w-3.5" />
+              {lang === 'vi' ? 'VI' : 'EN'}
+            </button>
+            <button
+              onClick={toggleTheme}
+              className="flex items-center justify-center rounded-lg border border-border
+                         bg-card hover:bg-accent w-8 h-8 text-foreground transition-colors"
+              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            >
+              {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+
+          <div className="border-t border-border p-3">
+            <div className="relative" ref={sidebarMenuRef}>
+              <button
+                onClick={() => setSidebarMenuOpen(o => !o)}
+                className="flex items-center gap-3 w-full rounded-xl p-2.5
+                           hover:bg-accent transition-colors group"
+              >
+                <WalletAvatar
+                  avatarUrl={avatarUrl}
+                  walletAddress={walletAddress}
+                  size="md"
+                />
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {displayName || ensName || t('dashboard.anonymous')}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground font-mono truncate">
+                    {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                  </p>
+                </div>
+                <svg className="w-4 h-4 text-muted-foreground flex-shrink-0"
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                    strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                </svg>
+              </button>
+
+              {sidebarMenuOpen && (
+                <div className="absolute bottom-full left-0 right-0 mb-2
+                                bg-card border border-border rounded-xl
+                                shadow-xl overflow-hidden">
+                  <div className="py-1">
+                    <button onClick={() => { onNavigate?.('profile'); setSidebarMenuOpen(false) }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5
+                                 text-sm text-foreground hover:bg-accent
+                                 hover:text-amber-400 transition-colors">
+                      <User className="h-4 w-4" />
+                      {t('sidebar.profile')}
+                    </button>
+                    <button onClick={() => { onNavigate?.('settings'); setSidebarMenuOpen(false) }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5
+                                 text-sm text-foreground hover:bg-accent
+                                 transition-colors">
+                      <Settings className="h-4 w-4" />
+                      {t('sidebar.settings')}
+                    </button>
+                    <button
+                      onClick={() => window.open(`https://etherscan.io/address/${walletAddress}`, '_blank')}
+                      className="flex items-center gap-3 w-full px-4 py-2.5
+                                 text-sm text-foreground hover:bg-accent
+                                 transition-colors">
+                      <ExternalLink className="h-4 w-4" />
+                      {t('sidebar.etherscan')}
+                    </button>
+                  </div>
+                  <div className="border-t border-border py-1">
+                    <button onClick={() => { onDisconnect?.(); setSidebarMenuOpen(false) }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5
+                                 text-sm text-muted-foreground hover:bg-red-500/10
+                                 hover:text-red-400 transition-colors">
+                      <LogOut className="h-4 w-4" />
+                      {t('sidebar.logout')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -817,32 +972,32 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
 
       {/* ── MAIN ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center justify-between border-b border-zinc-800 bg-zinc-950/80 backdrop-blur px-4">
+        <header className="flex h-14 items-center justify-between border-b border-border bg-background/80 backdrop-blur px-4">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
             >
               {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </button>
-            <h1 className="text-sm font-semibold text-zinc-100">
-              {activeTab === 'dashboard' && 'Dashboard'}
-              {activeTab === 'my-documents' && 'My Documents'}
-              {activeTab === 'ai' && 'AI Analysis'}
+            <h1 className="text-sm font-semibold text-foreground">
+              {activeTab === 'dashboard' && t('sidebar.dashboard')}
+              {activeTab === 'my-documents' && t('sidebar.my_documents')}
+              {activeTab === 'ai' && t('sidebar.ai_analysis')}
             </h1>
           </div>
 
           <div className="flex items-center gap-2">
-            <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-500">
+            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
               ⌘K
             </kbd>
             {(activeTab === 'my-documents' || activeTab === 'ai') && selectedDoc && (
               <button
                 onClick={() => setShareDialogDoc(selectedDoc)}
-                className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-amber-500 hover:text-amber-400 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:border-amber-500 hover:text-amber-400 transition-colors"
               >
                 <Share2 className="h-3.5 w-3.5" />
-                Share
+                {t('dashboard.share')}
               </button>
             )}
           </div>
@@ -857,9 +1012,9 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
             {activeTab === 'dashboard' && (
               <div>
                 <div className="mb-8">
-                  <h1 className="text-2xl font-semibold text-zinc-100">Bảng điều khiển</h1>
-                  <p className="mt-1 text-sm text-zinc-500">
-                    Quản lý tài liệu, xác minh AI và lưu trữ blockchain
+                  <h1 className="text-2xl font-semibold text-foreground">{t('dashboard.dashboard_title')}</h1>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {t('dashboard.dashboard_subtitle')}
                   </p>
                 </div>
 
@@ -877,23 +1032,23 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                   <div className="flex flex-col gap-6 lg:col-span-2">
                     <UploadBox onUpload={handleUpload} isUploading={isUploading} />
                     <FilterChips activeFilter={filter} onFilterChange={setFilter} />
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+                    <div className="rounded-xl border border-border bg-card overflow-hidden">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b border-zinc-800">
-                            <th className="px-4 py-3 text-left text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Document Name</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Type</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Status</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Date</th>
-                            <th className="px-4 py-3 text-right text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Actions</th>
+                          <tr className="border-b border-border">
+                            <th className="px-4 py-3 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.document_name')}</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.type')}</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.status')}</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.date')}</th>
+                            <th className="px-4 py-3 text-right text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.actions')}</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredDocs.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="py-16 text-center text-sm text-zinc-600">
+                              <td colSpan={5} className="py-16 text-center text-sm text-muted-foreground">
                                 <FileText className="mx-auto mb-3 h-8 w-8 text-zinc-700" />
-                                Chưa có tài liệu nào
+                                {t('dashboard.no_documents')}
                               </td>
                             </tr>
                           ) : (
@@ -905,27 +1060,27 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                     key={item.key}
                                     onClick={() => setPreviewDoc(item.docs![0])}
                                     onContextMenu={e => handleContextMenu(e, item)}
-                                    className="border-b border-zinc-800/60 cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                                    className="border-b border-border/60 cursor-pointer hover:bg-accent/50 transition-colors"
                                   >
                                     <td className="px-4 py-3">
                                       <div className="flex items-center gap-2">
                                         <FolderOpen className="h-4 w-4 text-amber-500 flex-shrink-0" />
-                                        <span className="truncate max-w-[240px] font-medium text-zinc-200">{item.folderName}</span>
+                                        <span className="truncate max-w-[240px] font-medium text-foreground">{item.folderName}</span>
                                       </div>
                                     </td>
                                     <td className="px-4 py-3">
-                                      <span className="text-xs text-zinc-500">folder</span>
+                                      <span className="text-xs text-muted-foreground">{t('dashboard.folder_label')}</span>
                                     </td>
                                     <td className="px-4 py-3">
-                                      <span className="text-xs text-zinc-500">{item.docs!.length} files</span>
+                                      <span className="text-xs text-muted-foreground">{item.docs!.length} {t('dashboard.documents_count')}</span>
                                     </td>
-                                    <td className="px-4 py-3 text-xs text-zinc-500">
+                                    <td className="px-4 py-3 text-xs text-muted-foreground">
                                       {new Date(latest.created_at).toLocaleDateString('vi-VN')}
                                     </td>
                                     <td className="px-4 py-3">
                                       <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                                         <button title="Preview" onClick={() => setPreviewDoc(item.docs![0])}
-                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                           <Eye className="h-3.5 w-3.5" />
                                         </button>
                                         <button title="Store On-Chain" onClick={() => handleStoreFolderOnChain(item.docs![0].folder_group!)}
@@ -933,17 +1088,17 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                           <Link2 className="h-3.5 w-3.5" />
                                         </button>
                                         <button title="Add to Favorites" onClick={e => handleToggleStarFolder(e, item.docs!)}
-                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                           <svg className={`h-3.5 w-3.5 ${item.docs![0].is_starred ? 'text-amber-400 fill-amber-400' : ''}`} viewBox="0 0 24 24">
                                             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                                           </svg>
                                         </button>
                                         <button title="Share" onClick={() => { setShareDialogResourceLabel(`📁 ${item.folderName}`); setShareDialogDoc(item.docs![0]) }}
-                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                           <Share2 className="h-3.5 w-3.5" />
                                         </button>
                                         <button title="Delete" onClick={() => handleDeleteFolder(item.docs![0].folder_group!)}
-                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors">
                                           <Trash2 className="h-3.5 w-3.5" />
                                         </button>
                                       </div>
@@ -957,41 +1112,41 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                   key={doc.id}
                                   onClick={() => selectDoc(doc)}
                                   onContextMenu={e => handleContextMenu(e, item)}
-                                  className={`border-b border-zinc-800/60 cursor-pointer transition-colors ${
+                                  className={`border-b border-border/60 cursor-pointer transition-colors ${
                                     selectedDoc?.id === doc.id
                                       ? 'bg-amber-500/5 border-l-2 border-l-amber-500'
                                       : doc.is_starred
                                         ? 'bg-amber-500/5'
-                                        : 'hover:bg-zinc-800/50'
+                                        : 'hover:bg-accent/50'
                                   }`}
                                 >
                                   <td className="px-4 py-3">
                                     <div className="flex items-center gap-2">
-                                      <FileText className="h-4 w-4 text-zinc-500 flex-shrink-0" />
-                                      <span className="truncate max-w-[240px] font-medium text-zinc-200">{doc.title}</span>
+                                      <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                      <span className="truncate max-w-[240px] font-medium text-foreground">{doc.title}</span>
                                     </div>
                                   </td>
                                   <td className="px-4 py-3">
-                                    <span className="text-xs text-zinc-500 capitalize">
-                                      {doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || 'unknown'}
+                                    <span className="text-xs text-muted-foreground capitalize">
+{doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || t('dashboard.unknown_type')}
                                     </span>
                                   </td>
                                   <td className="px-4 py-3">
                                     {doc.is_onchain ? (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[11px] font-medium text-emerald-400">✓ On-Chain</span>
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[11px] font-medium text-emerald-400">✓ {t('dashboard.onchain_badge')}</span>
                                     ) : doc.is_ai_verified ? (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[11px] font-medium text-blue-400">✓ AI Verified</span>
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[11px] font-medium text-blue-400">✓ {t('dashboard.ai_verified_badge')}</span>
                                     ) : (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-400">⏳ Pending</span>
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-400">⏳ {t('dashboard.pending_badge')}</span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3 text-xs text-zinc-500">
+                                  <td className="px-4 py-3 text-xs text-muted-foreground">
                                     {new Date(doc.created_at).toLocaleDateString('vi-VN')}
                                   </td>
                                   <td className="px-4 py-3">
                                     <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                                       <button title="Preview" onClick={() => setPreviewDoc(doc)}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                         <Eye className="h-3.5 w-3.5" />
                                       </button>
                                       {!doc.is_onchain && (
@@ -1001,17 +1156,17 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                         </button>
                                       )}
                                       <button title="Add to Favorites" onClick={e => handleToggleStar(e, doc)}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                         <svg className={`h-3.5 w-3.5 ${doc.is_starred ? 'text-amber-400 fill-amber-400' : ''}`} viewBox="0 0 24 24">
                                           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                                         </svg>
                                       </button>
                                       <button title="Share" onClick={() => setShareDialogDoc(doc)}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                         <Share2 className="h-3.5 w-3.5" />
                                       </button>
                                       <button title="Delete" onClick={() => handleDeleteDoc(doc)}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors">
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </button>
                                     </div>
@@ -1026,40 +1181,40 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                   </div>
                   <div className="flex flex-col gap-6">
                     {selectedDoc ? (
-                      <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-                        <div className="border-b border-zinc-800 px-5 py-4">
-                          <h2 className="truncate text-sm font-semibold text-zinc-100">{selectedDoc.title}</h2>
-                          <p className="mt-1 truncate font-mono text-[10px] text-zinc-600">CID: {selectedDoc.cid}</p>
+                      <div className="rounded-xl border border-border bg-card overflow-hidden">
+                        <div className="border-b border-border px-5 py-4">
+                          <h2 className="truncate text-sm font-semibold text-foreground">{selectedDoc.title}</h2>
+                          <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">CID: {selectedDoc.cid}</p>
                         </div>
-                        <div className="flex flex-wrap gap-2 border-b border-zinc-800 px-5 py-3">
+                        <div className="flex flex-wrap gap-2 border-b border-border px-5 py-3">
                           {!selectedDoc.is_onchain ? (
                             <button onClick={() => handleStoreOnChain(selectedDoc)}
                               className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-amber-400 transition-colors">
                               <Link2 className="h-3.5 w-3.5" />
-                              Lưu Proof On-Chain
+                              {t('dashboard.save_proof_onchain')}
                             </button>
                           ) : (
                             <span className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400">
-                              ✓ Đã lưu On-Chain
+                              ✓ {t('dashboard.saved_onchain')}
                             </span>
                           )}
                           <button onClick={() => setShareDialogDoc(selectedDoc)}
-                            className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-amber-500 hover:text-amber-400 transition-colors">
+                            className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:border-amber-500 hover:text-amber-400 transition-colors">
                             <Share2 className="h-3.5 w-3.5" />
-                            Share
+                            {t('dashboard.share')}
                           </button>
                         </div>
                         {selectedDoc.ai_summary && (
                           <div className="px-5 py-4">
-                            <p className="mb-1 text-[10px] font-semibold text-zinc-500 uppercase">AI Summary</p>
-                            <p className="text-xs leading-relaxed text-zinc-400">{selectedDoc.ai_summary}</p>
+                            <p className="mb-1 text-[10px] font-semibold text-muted-foreground uppercase">{t('dashboard.ai_summary')}</p>
+                            <p className="text-xs leading-relaxed text-muted-foreground">{selectedDoc.ai_summary}</p>
                           </div>
                         )}
                       </div>
                     ) : (
-                      <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900">
-                        <p className="px-6 text-center text-xs text-zinc-600">
-                          Chọn một tài liệu trong bảng<br />để xem chi tiết
+                      <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-border bg-card">
+                        <p className="px-6 text-center text-xs text-muted-foreground">
+                          {t('dashboard.select_doc_prompt_title')}<br />{t('dashboard.select_doc_prompt_subtitle')}
                         </p>
                       </div>
                     )}
@@ -1076,61 +1231,61 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
               <div>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <div className="flex items-center gap-2 text-sm text-zinc-500">
-                      <button onClick={() => { setNavMode('all'); setCurrentFolderId(undefined); setBreadcrumb([]); loadDocs() }} className="hover:text-zinc-300 transition-colors">Dashboard</button>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <button onClick={() => { setNavMode('all'); setCurrentFolderId(undefined); setBreadcrumb([]); loadDocs() }} className="hover:text-foreground transition-colors">{t('sidebar.dashboard')}</button>
                       {breadcrumb.length > 0 ? breadcrumb.map((f, idx) => (
                         <React.Fragment key={f.id}>
                           {idx > 0 && <span className="text-zinc-700">/</span>}
-                          <button onClick={() => navigateToFolder(f.id)} className="hover:text-zinc-300 transition-colors">
+                          <button onClick={() => navigateToFolder(f.id)} className="hover:text-foreground transition-colors">
                             {f.name}
                           </button>
                         </React.Fragment>
                       )) : navMode !== 'all' && (
                         <>
                           <span className="text-zinc-700">/</span>
-                          <span className="text-zinc-400">
-                            {navMode === 'starred' ? 'Favorites' : navMode === 'recent' ? 'Recent' : 'Trash'}
+                          <span className="text-muted-foreground">
+                            {navMode === 'starred' ? t('dashboard.favorites') : navMode === 'recent' ? t('dashboard.recent') : t('dashboard.trash')}
                           </span>
                         </>
                       )}
                     </div>
-                    <p className="mt-1 text-xs text-zinc-600">
-                      {navMode === 'trash' ? 'Deleted documents' : navMode === 'starred' ? 'Favorite documents' : navMode === 'recent' ? 'Recent documents' : `All documents (${documents.length})`}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {navMode === 'trash' ? t('dashboard.deleted_documents') : navMode === 'starred' ? t('dashboard.favorite_documents') : navMode === 'recent' ? t('dashboard.recent_documents') : `${t('dashboard.all_documents')} (${documents.length})`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="relative">
-                      <input type="text" placeholder="Search..." value={searchQuery}
+                      <input type="text" placeholder={t('dashboard.search')} value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                        className="w-40 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-amber-500 transition-colors"
+                        className="w-40 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-amber-500 transition-colors"
                       />
-                      <button onClick={handleSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
+                      <button onClick={handleSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                         <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" strokeWidth="2"/><path d="M21 21l-4.35-4.35" strokeWidth="2" strokeLinecap="round"/></svg>
                       </button>
                     </div>
                     <button onClick={() => setViewMode('list')}
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${viewMode === 'list' ? 'bg-amber-500/10 text-amber-400' : 'text-zinc-500 hover:bg-zinc-800'}`}>
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${viewMode === 'list' ? 'bg-amber-500/10 text-amber-400' : 'text-muted-foreground hover:bg-accent'}`}>
                       <List className="h-4 w-4" />
                     </button>
                     <button onClick={() => setViewMode('grid')}
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-amber-500/10 text-amber-400' : 'text-zinc-500 hover:bg-zinc-800'}`}>
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-amber-500/10 text-amber-400' : 'text-muted-foreground hover:bg-accent'}`}>
                       <Grid3X3 className="h-4 w-4" />
                     </button>
-                    <div className="mx-2 h-6 w-px bg-zinc-800" />
+                    <div className="mx-2 h-6 w-px bg-muted" />
                     <button onClick={() => setShowUpload(!showUpload)}
                       className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400 transition-colors">
-                      <Upload className="h-3.5 w-3.5" /> Upload
+                      <Upload className="h-3.5 w-3.5" /> {t('dashboard.upload')}
                     </button>
                   </div>
                 </div>
 
                 {searchResults !== null && (
-                  <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2 text-xs text-zinc-400">
+                  <div className="mb-4 rounded-lg border border-border bg-card px-4 py-2 text-xs text-muted-foreground">
                     {searchResults.length > 0
-                      ? `Search results: ${searchResults.length} files`
-                      : 'No results found'}
-                    <button onClick={() => { setSearchResults(null); setSearchQuery('') }} className="ml-2 text-amber-400 hover:underline">Clear</button>
+                      ? `${t('dashboard.search_results')}: ${searchResults.length} ${t('dashboard.files_found')}`
+                      : t('dashboard.no_results_found')}
+                    <button onClick={() => { setSearchResults(null); setSearchQuery('') }} className="ml-2 text-amber-400 hover:underline">{t('dashboard.clear')}</button>
                   </div>
                 )}
 
@@ -1141,21 +1296,21 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                 )}
 
                 {documents.length === 0 && !searchResults ? (
-                  <div className="mb-8 flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900 py-16">
+                  <div className="mb-8 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card py-16">
                     <FolderOpen className="mb-4 h-12 w-12 text-zinc-700" />
-                    <p className="text-sm text-zinc-500">
-                      {navMode === 'trash' ? 'Trash is empty' : navMode === 'starred' ? 'No favorite documents' : 'No documents yet'}
+                    <p className="text-sm text-muted-foreground">
+                      {navMode === 'trash' ? t('dashboard.trash_is_empty') : navMode === 'starred' ? t('dashboard.no_favorite_documents') : t('dashboard.no_documents_yet')}
                     </p>
                     {navMode !== 'trash' && (
                       <button onClick={() => setShowUpload(true)}
                         className="mt-4 rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400 transition-colors">
-                        Tải lên ngay
+                        {t('dashboard.upload_now')}
                       </button>
                     )}
                   </div>
                 ) : viewMode === 'grid' ? (
                   <div className="mb-8">
-                    {navMode === 'all' && <p className="mb-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">My Files ({documents.length})</p>}
+                    {navMode === 'all' && <p className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('dashboard.my_files')} ({documents.length})</p>}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                       {getDisplayItems(documents, navMode === 'all' ? folders : []).map(item => {
                         if (item.type === 'folder') {
@@ -1166,17 +1321,17 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                 key={item.key}
                                 onClick={() => navigateToFolder(folder.id)}
                                 onContextMenu={e => handleContextMenu(e, item)}
-                                className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-700 transition-all"
+                                className="group cursor-pointer rounded-xl border border-border bg-card p-4 hover:border-border transition-all"
                               >
                                 <div className="mb-3 flex items-center justify-between">
                                   <FolderOpen className="h-10 w-10 text-amber-500" />
                                 </div>
-                                <p className="truncate text-sm font-medium text-zinc-200">{folder.name}</p>
-                                <p className="mt-1 text-[10px] text-zinc-500">
+                                <p className="truncate text-sm font-medium text-foreground">{folder.name}</p>
+                                <p className="mt-1 text-[10px] text-muted-foreground">
                                   {new Date(folder.created_at).toLocaleDateString('vi-VN')}
                                 </p>
                                 <div className="mt-3 flex flex-wrap gap-1">
-                                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">folder</span>
+                                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{t('dashboard.folder_label')}</span>
                                 </div>
                               </div>
                             )
@@ -1187,55 +1342,55 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                               key={item.key}
                               onClick={() => setPreviewDoc(item.docs![0])}
                               onContextMenu={e => handleContextMenu(e, item)}
-                              className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-700 transition-all"
+                              className="group cursor-pointer rounded-xl border border-border bg-card p-4 hover:border-border transition-all"
                             >
                               <div className="mb-3 flex items-center justify-between">
                                 <FolderOpen className="h-10 w-10 text-amber-500" />
                                 <div className="flex items-center gap-1">
                                   <button onClick={e => { e.stopPropagation(); toggleFolderExpand(item.key); }}
                                     className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <svg className={`h-4 w-4 ${expandedFolder === item.key ? 'text-amber-400' : 'text-zinc-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className={`h-4 w-4 ${expandedFolder === item.key ? 'text-amber-400' : 'text-muted-foreground'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path d={expandedFolder === item.key ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                     </svg>
                                   </button>
                                   <button onClick={e => handleToggleStarFolder(e, item.docs!)}
                                     className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <svg className={`h-4 w-4 ${item.docs![0].is_starred ? 'text-amber-400 fill-amber-400' : 'text-zinc-600'}`} viewBox="0 0 24 24">
+                                    <svg className={`h-4 w-4 ${item.docs![0].is_starred ? 'text-amber-400 fill-amber-400' : 'text-muted-foreground'}`} viewBox="0 0 24 24">
                                       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                                     </svg>
                                   </button>
                                 </div>
                               </div>
-                              <p className="truncate text-sm font-medium text-zinc-200">{item.folderName}</p>
-                              <p className="mt-1 text-[10px] text-zinc-500">
-                                {item.docs!.length} files · {new Date(latest.created_at).toLocaleDateString('vi-VN')}
+                              <p className="truncate text-sm font-medium text-foreground">{item.folderName}</p>
+                              <p className="mt-1 text-[10px] text-muted-foreground">
+                                {item.docs!.length} {t('dashboard.documents_count')} · {new Date(latest.created_at).toLocaleDateString('vi-VN')}
                               </p>
                               <div className="mt-3 flex flex-wrap gap-1">
-                                <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">folder</span>
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{t('dashboard.folder_label')}</span>
                               </div>
                               <div className="mt-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                 <button onClick={() => setPreviewDoc(item.docs![0])}
-                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                  <Eye className="h-3 w-3" /> Preview
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-zinc-700 transition-colors">
+                                  <Eye className="h-3 w-3" /> {t('dashboard.preview')}
                                 </button>
                                 <button onClick={() => handleStoreFolderOnChain(item.docs![0].folder_group!)}
-                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-amber-400 hover:bg-amber-500/10 transition-colors">
-                                  <Link2 className="h-3 w-3" /> Chain
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-amber-400 hover:bg-amber-500/10 transition-colors">
+                                  <Link2 className="h-3 w-3" /> {t('dashboard.chain')}
                                 </button>
                                 <button onClick={() => { setShareDialogResourceLabel(`📁 ${item.folderName}`); setShareDialogDoc(item.docs![0]) }}
-                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                  <Share2 className="h-3 w-3" /> Share
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-zinc-700 transition-colors">
+                                  <Share2 className="h-3 w-3" /> {t('dashboard.share')}
                                 </button>
                                 <button onClick={() => handleDeleteFolder(item.docs![0].folder_group!)}
-                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
-                                  <Trash2 className="h-3 w-3" /> Delete
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                  <Trash2 className="h-3 w-3" /> {t('dashboard.delete')}
                                 </button>
                               </div>
                               {expandedFolder === item.key && item.docs && (
-                                <div className="mt-3 border-t border-zinc-800 pt-2 space-y-1">
+                                <div className="mt-3 border-t border-border pt-2 space-y-1">
                                   {item.docs.map(d => (
                                     <div key={d.id} onClick={e => { e.stopPropagation(); setPreviewDoc(d) }}
-                                      className="flex items-center gap-2 rounded-md px-2 py-1 text-[10px] text-zinc-400 hover:bg-zinc-800 cursor-pointer transition-colors">
+                                      className="flex items-center gap-2 rounded-md px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent cursor-pointer transition-colors">
                                       <FileText className="h-3 w-3 flex-shrink-0" />
                                       <span className="truncate">{d.relative_path?.split('/').slice(1).join('/') || d.title}</span>
                                     </div>
@@ -1254,15 +1409,15 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                             className={`group cursor-pointer rounded-xl border p-4 transition-all ${
                               doc.is_starred
                                 ? 'border-amber-500/30 bg-amber-500/5'
-                                : 'border-zinc-800 bg-zinc-900 hover:border-zinc-700'
+                                : 'border-border bg-card hover:border-border'
                             }`}
                           >
                             <div className="mb-3 flex items-center justify-between">
-                              <FileText className="h-10 w-10 text-zinc-500" />
+                              <FileText className="h-10 w-10 text-muted-foreground" />
                               <div className="flex items-center gap-1">
                                 <button onClick={e => handleToggleStar(e, doc)}
                                   className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <svg className={`h-4 w-4 ${doc.is_starred ? 'text-amber-400 fill-amber-400' : 'text-zinc-600'}`} viewBox="0 0 24 24">
+                                  <svg className={`h-4 w-4 ${doc.is_starred ? 'text-amber-400 fill-amber-400' : 'text-muted-foreground'}`} viewBox="0 0 24 24">
                                     <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                                   </svg>
                                 </button>
@@ -1270,44 +1425,44 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                 {doc.is_onchain && <Link2 className="h-4 w-4 text-emerald-400" />}
                               </div>
                             </div>
-                            <p className="truncate text-sm font-medium text-zinc-200">{doc.title}</p>
-                            <p className="mt-1 text-[10px] text-zinc-500">
+                            <p className="truncate text-sm font-medium text-foreground">{doc.title}</p>
+                            <p className="mt-1 text-[10px] text-muted-foreground">
                               {doc.file_size ? formatStorage(doc.file_size) : ''}
                               {doc.file_size ? ' · ' : ''}
                               {new Date(doc.created_at).toLocaleDateString('vi-VN')}
                             </p>
                             <div className="mt-3 flex flex-wrap gap-1">
-                              <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">
-                                {doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || 'file'}
+                              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                                {doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || t('dashboard.unknown_type')}
                               </span>
                             </div>
                             <div className="mt-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                               <button onClick={() => setPreviewDoc(doc)}
-                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                <Eye className="h-3 w-3" /> Preview
+                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-zinc-700 transition-colors">
+                                <Eye className="h-3 w-3" /> {t('dashboard.preview')}
                               </button>
                               {navMode === 'trash' ? (
                                 <button onClick={() => restoreDocument(token, doc.id).then(() => loadDocs())}
-                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-emerald-400 hover:bg-emerald-500/10 transition-colors">
-                                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" strokeWidth="2"/><circle cx="12" cy="12" r="3" strokeWidth="2"/></svg> Restore
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+                                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" strokeWidth="2"/><circle cx="12" cy="12" r="3" strokeWidth="2"/></svg> {t('dashboard.restore')}
                                 </button>
                               ) : (
                                 <>
                                   <button onClick={() => setShareDialogDoc(doc)}
-                                    className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                    <Share2 className="h-3 w-3" /> Share
+                                    className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-zinc-700 transition-colors">
+                                    <Share2 className="h-3 w-3" /> {t('dashboard.share')}
                                   </button>
                                   {!doc.is_onchain && (
                                     <button onClick={() => handleStoreOnChain(doc)}
-                                      className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                      <Link2 className="h-3 w-3" /> Chain
+                                      className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-zinc-700 transition-colors">
+                                      <Link2 className="h-3 w-3" /> {t('dashboard.chain')}
                                     </button>
                                   )}
                                 </>
                               )}
                               <button onClick={() => handleDeleteDoc(doc)}
-                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
-                                <Trash2 className="h-3 w-3" /> {navMode === 'trash' ? 'Delete permanently' : 'Delete'}
+                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                <Trash2 className="h-3 w-3" /> {navMode === 'trash' ? t('dashboard.delete_permanently') : t('dashboard.delete')}
                               </button>
                             </div>
                           </div>
@@ -1317,16 +1472,16 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                   </div>
                 ) : (
                   <div className="mb-8">
-                    {navMode === 'all' && <p className="mb-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">My Files ({documents.length})</p>}
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+                    {navMode === 'all' && <p className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('dashboard.my_files')} ({documents.length})</p>}
+                    <div className="rounded-xl border border-border bg-card overflow-hidden">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b border-zinc-800">
-                            <th className="px-4 py-3 text-left text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Name</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Type</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Size</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Date</th>
-                            <th className="px-4 py-3 text-right text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Actions</th>
+                          <tr className="border-b border-border">
+                            <th className="px-4 py-3 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.name')}</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.type')}</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.size')}</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.date')}</th>
+                            <th className="px-4 py-3 text-right text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('dashboard.actions')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1335,21 +1490,40 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                               if (item.folderEntity) {
                                 const folder = item.folderEntity
                                 return (
-                                  <tr key={item.key} className="border-b border-zinc-800/60 hover:bg-zinc-800/50 transition-colors cursor-pointer" onClick={() => navigateToFolder(folder.id)} onContextMenu={e => handleContextMenu(e, item)}>
+                                  <tr key={item.key} className="border-b border-border/60 hover:bg-accent/50 transition-colors cursor-pointer" onClick={() => navigateToFolder(folder.id)} onContextMenu={e => handleContextMenu(e, item)}>
                                     <td className="px-4 py-3">
                                       <div className="flex items-center gap-2">
                                         <FolderOpen className="h-4 w-4 text-amber-500 flex-shrink-0" />
-                                        <span className="truncate max-w-[200px] font-medium text-zinc-200">{folder.name}</span>
+                                        <span className="truncate max-w-[200px] font-medium text-foreground">{folder.name}</span>
                                       </div>
                                     </td>
-                                    <td className="px-4 py-3 text-xs text-zinc-500">folder</td>
-                                    <td className="px-4 py-3 text-xs text-zinc-500">-</td>
-                                    <td className="px-4 py-3 text-xs text-zinc-500">{new Date(folder.created_at).toLocaleDateString('vi-VN')}</td>
+                                    <td className="px-4 py-3 text-xs text-muted-foreground">{t('dashboard.folder_label')}</td>
+                                    <td className="px-4 py-3 text-xs text-muted-foreground">-</td>
+                                    <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(folder.created_at).toLocaleDateString('vi-VN')}</td>
                                     <td className="px-4 py-3">
                                       <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                                         <button title="Preview" onClick={() => navigateToFolder(folder.id)}
-                                          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                           <Eye className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button title="Delete" onClick={async () => {
+                                          if (!window.confirm(`Xóa thư mục "${folder.name}"?`)) return
+                                          try {
+                                            await deleteFolder(token, folder.id, true)
+                                            setFolders(prev => prev.filter(f => f.id !== folder.id))
+                                            if (currentFolderId === folder.id) {
+                                              setCurrentFolderId(undefined)
+                                              setBreadcrumb([])
+                                              await loadDocs(undefined, 'all')
+                                              await loadFolders(undefined)
+                                            }
+                                          } catch (err) {
+                                            console.error('Delete folder failed:', err)
+                                            alert('Xóa thư mục thất bại!')
+                                          }
+                                        }}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md text-red-400 hover:bg-red-400/10 transition-colors">
+                                          <Trash2 className="h-3.5 w-3.5" />
                                         </button>
                                       </div>
                                     </td>
@@ -1358,20 +1532,20 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                               }
                               const latest = item.docs!.reduce((a, b) => a.created_at > b.created_at ? a : b)
                               return (
-                                <tr key={item.key} className="border-b border-zinc-800/60 hover:bg-zinc-800/50 transition-colors" onContextMenu={e => handleContextMenu(e, item)}>
+                                <tr key={item.key} className="border-b border-border/60 hover:bg-accent/50 transition-colors" onContextMenu={e => handleContextMenu(e, item)}>
                                   <td className="px-4 py-3">
                                     <div className="flex items-center gap-2">
                                       <FolderOpen className="h-4 w-4 text-amber-500 flex-shrink-0" />
-                                      <span className="truncate max-w-[200px] font-medium text-zinc-200">{item.folderName}</span>
+                                      <span className="truncate max-w-[200px] font-medium text-foreground">{item.folderName}</span>
                                     </div>
                                   </td>
-                                  <td className="px-4 py-3 text-xs text-zinc-500">folder</td>
-                                  <td className="px-4 py-3 text-xs text-zinc-500">{item.docs!.length} files</td>
-                                  <td className="px-4 py-3 text-xs text-zinc-500">{new Date(latest.created_at).toLocaleDateString('vi-VN')}</td>
+                                  <td className="px-4 py-3 text-xs text-muted-foreground">{t('dashboard.folder_label')}</td>
+                                  <td className="px-4 py-3 text-xs text-muted-foreground">{item.docs!.length} {t('dashboard.documents_count')}</td>
+                                  <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(latest.created_at).toLocaleDateString('vi-VN')}</td>
                                   <td className="px-4 py-3">
                                     <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                                       <button title="Preview" onClick={() => setPreviewDoc(item.docs![0])}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                         <Eye className="h-3.5 w-3.5" />
                                       </button>
                                       <button title="Store On-Chain" onClick={() => handleStoreFolderOnChain(item.docs![0].folder_group!)}
@@ -1379,17 +1553,17 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                         <Link2 className="h-3.5 w-3.5" />
                                       </button>
                                       <button title="Add to Favorites" onClick={e => handleToggleStarFolder(e, item.docs!)}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                         <svg className={`h-3.5 w-3.5 ${item.docs![0].is_starred ? 'text-amber-400 fill-amber-400' : ''}`} viewBox="0 0 24 24">
                                           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                                         </svg>
                                       </button>
                                       <button title="Share" onClick={() => { setShareDialogResourceLabel(`📁 ${item.folderName}`); setShareDialogDoc(item.docs![0]) }}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                         <Share2 className="h-3.5 w-3.5" />
                                       </button>
                                       <button title="Delete" onClick={() => handleDeleteFolder(item.docs![0].folder_group!)}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors">
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </button>
                                     </div>
@@ -1399,30 +1573,30 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                             }
                             const doc = item.doc!
                             return (
-                              <tr key={doc.id} className={`border-b border-zinc-800/60 transition-colors ${doc.is_starred ? 'bg-amber-500/5' : 'hover:bg-zinc-800/50'}`} onContextMenu={e => handleContextMenu(e, item)}>
+                              <tr key={doc.id} className={`border-b border-border/60 transition-colors ${doc.is_starred ? 'bg-amber-500/5' : 'hover:bg-accent/50'}`} onContextMenu={e => handleContextMenu(e, item)}>
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-2">
-                                    <FileText className="h-4 w-4 text-zinc-500 flex-shrink-0" />
-                                    <span className="truncate max-w-[200px] font-medium text-zinc-200">{doc.title}</span>
+                                    <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                    <span className="truncate max-w-[200px] font-medium text-foreground">{doc.title}</span>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 text-xs text-zinc-500">{doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || 'unknown'}</td>
-                                <td className="px-4 py-3 text-xs text-zinc-500">{doc.file_size ? formatStorage(doc.file_size) : '-'}</td>
-                                <td className="px-4 py-3 text-xs text-zinc-500">{new Date(doc.created_at).toLocaleDateString('vi-VN')}</td>
+                                <td className="px-4 py-3 text-xs text-muted-foreground">{doc.mime_type?.split('/')[1] || doc.title?.split('.').pop() || t('dashboard.unknown_type')}</td>
+                                <td className="px-4 py-3 text-xs text-muted-foreground">{doc.file_size ? formatStorage(doc.file_size) : '-'}</td>
+                                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(doc.created_at).toLocaleDateString('vi-VN')}</td>
                                 <td className="px-4 py-3">
                                   <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                                     <button title="Preview" onClick={() => setPreviewDoc(doc)}
-                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                       <Eye className="h-3.5 w-3.5" />
                                     </button>
                                     <button title="Add to Favorites" onClick={e => handleToggleStar(e, doc)}
-                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                       <svg className={`h-3.5 w-3.5 ${doc.is_starred ? 'text-amber-400 fill-amber-400' : ''}`} viewBox="0 0 24 24">
                                         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                                       </svg>
                                     </button>
                                     <button title="Share" onClick={() => setShareDialogDoc(doc)}
-                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 transition-colors">
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-zinc-700 transition-colors">
                                       <Share2 className="h-3.5 w-3.5" />
                                     </button>
                                     {!doc.is_onchain && (
@@ -1432,7 +1606,7 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                       </button>
                                     )}
                                     <button title="Delete" onClick={() => handleDeleteDoc(doc)}
-                                      className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors">
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </button>
                                   </div>
@@ -1450,12 +1624,12 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                   <div>
                     <div className="mb-3 flex items-center gap-2">
                       <Share2 className="h-4 w-4 text-amber-500" />
-                      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Shared with me ({sharedDocs.length})</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('dashboard.shared_with_me')} ({sharedDocs.length})</p>
                     </div>
                     {sharedDocs.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900 py-12">
+                      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card py-12">
                         <Users className="mb-3 h-8 w-8 text-zinc-700" />
-                        <p className="text-xs text-zinc-500">Chưa có tài liệu nào được chia sẻ với bạn</p>
+                        <p className="text-xs text-muted-foreground">{t('dashboard.no_shared_documents')}</p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -1463,27 +1637,27 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                           <div
                             key={doc.share_id || doc.id}
                             onClick={() => openSharedDoc(doc)}
-                            className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-amber-500/40 transition-all"
+                            className="group cursor-pointer rounded-xl border border-border bg-card p-4 hover:border-amber-500/40 transition-all"
                           >
                             <div className="mb-3 flex items-center justify-between">
-                              <FileText className="h-8 w-8 text-zinc-500" />
+                              <FileText className="h-8 w-8 text-muted-foreground" />
                               <div className="flex items-center gap-1">
                                 {doc.permission === 'edit' ? (
-                                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-medium text-amber-400">Edit</span>
+                                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-medium text-amber-400">{t('dashboard.edit_permission')}</span>
                                 ) : (
-                                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[9px] font-medium text-blue-400">View</span>
+                                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[9px] font-medium text-blue-400">{t('dashboard.view_permission')}</span>
                                 )}
                               </div>
                             </div>
-                            <p className="truncate text-sm font-medium text-zinc-200">{doc.title}</p>
-                            <p className="mt-1 truncate text-[10px] text-zinc-500">
-                              from <span className="font-mono text-zinc-400">{doc.shared_by?.slice(0, 6)}...{doc.shared_by?.slice(-4)}</span>
+                            <p className="truncate text-sm font-medium text-foreground">{doc.title}</p>
+                            <p className="mt-1 truncate text-[10px] text-muted-foreground">
+                              {t('dashboard.from_user')} <span className="font-mono text-muted-foreground">{doc.shared_by?.slice(0, 6)}...{doc.shared_by?.slice(-4)}</span>
                             </p>
-                            <p className="text-[10px] text-zinc-600">{doc.shared_at ? new Date(doc.shared_at).toLocaleDateString('vi-VN') : ''}</p>
+                            <p className="text-[10px] text-muted-foreground">{doc.shared_at ? new Date(doc.shared_at).toLocaleDateString('vi-VN') : ''}</p>
                             <div className="mt-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                               <button onClick={() => openSharedDoc(doc)}
-                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-zinc-800 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-700 transition-colors">
-                                <Eye className="h-3 w-3" /> Preview
+                                className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-zinc-700 transition-colors">
+                                <Eye className="h-3 w-3" /> {t('dashboard.preview')}
                               </button>
                             </div>
                           </div>
@@ -1502,14 +1676,14 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
               <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
                   <div>
-                    <h2 className="text-xl font-semibold text-zinc-100">AI Analysis</h2>
-                    <p className="mt-1 text-sm text-zinc-500">Phân tích tài liệu với AI</p>
+                    <h2 className="text-xl font-semibold text-foreground">{t('dashboard.ai_analysis_title')}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.ai_analysis_subtitle')}</p>
                   </div>
 
-                  <div className="mb-4 flex items-center gap-1 border-b border-zinc-800">
+                  <div className="mb-4 flex items-center gap-1 border-b border-border">
                     {[
-                      { id: 'docs', label: 'AI Chat & Clauses', icon: <Brain className="h-4 w-4" /> },
-                      { id: 'compare', label: 'So sánh AI', icon: <Scale className="h-4 w-4" /> },
+                      { id: 'docs', label: t('dashboard.ai_chat_clauses_tab'), icon: <Brain className="h-4 w-4" /> },
+                      { id: 'compare', label: t('dashboard.compare_tab'), icon: <Scale className="h-4 w-4" /> },
                     ].map(tab => (
                       <button
                         key={tab.id}
@@ -1517,7 +1691,7 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                         className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
                           sidebarSubTab === tab.id
                             ? 'border-amber-500 text-amber-400'
-                            : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
+                            : 'border-transparent text-muted-foreground hover:text-foreground hover:border-zinc-600'
                         }`}
                       >
                         {tab.icon}
@@ -1529,16 +1703,16 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                   {sidebarSubTab === 'docs' && (
                     <div className="space-y-6">
                       <div>
-                        <label className="mb-1.5 block text-xs font-medium text-zinc-500">Chọn tài liệu</label>
+                        <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('dashboard.select_document_label')}</label>
                         <select
                           value={selectedDoc?.id || ''}
                           onChange={e => {
                             const doc = documents.find(d => d.id === e.target.value)
                             if (doc) selectDoc(doc)
                           }}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-500 transition-colors"
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-amber-500 transition-colors"
                         >
-                          <option value="">-- Chọn tài liệu --</option>
+                          <option value="">{t('dashboard.select_document_option')}</option>
                           {documents.map(d => (
                             <option key={d.id} value={d.id}>{d.title}</option>
                           ))}
@@ -1547,36 +1721,36 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
 
                       {selectedDoc && (
                         <>
-                          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-                            <div className="border-b border-zinc-800 px-5 py-3 flex items-center justify-between">
-                              <p className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                          <div className="rounded-xl border border-border bg-card overflow-hidden">
+                            <div className="border-b border-border px-5 py-3 flex items-center justify-between">
+                              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                                 <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                                AI Deep Analysis
+                                {t('dashboard.ai_deep_analysis')}
                               </p>
                               <button
                                 onClick={() => handleAIAnalysis(selectedDoc.id)}
                                 disabled={isLoadingAnalysis}
                                 className="rounded-lg bg-amber-500 px-3 py-1.5 text-[10px] font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-50 transition-colors"
                               >
-                                {isLoadingAnalysis ? 'Analyzing...' : 'Analyze'}
+                                {isLoadingAnalysis ? t('dashboard.analyzing') : t('dashboard.analyze')}
                               </button>
                             </div>
                             {isLoadingAnalysis && (
                               <div className="flex items-center justify-center py-8">
-                                <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-amber-500" />
+                                <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-amber-500" />
                               </div>
                             )}
                             {aiAnalysis && !isLoadingAnalysis && (
                               <div className="px-5 py-4 space-y-3">
                                 <div>
-                                  <p className="text-[10px] font-semibold text-zinc-500 uppercase">Summary</p>
-                                  <p className="mt-1 text-sm text-zinc-300">{aiAnalysis.summary}</p>
+                                  <p className="text-[10px] font-semibold text-muted-foreground uppercase">{t('dashboard.summary')}</p>
+                                  <p className="mt-1 text-sm text-foreground">{aiAnalysis.summary}</p>
                                 </div>
                                 <div>
-                                  <p className="text-[10px] font-semibold text-zinc-500 uppercase">Key Points</p>
+                                  <p className="text-[10px] font-semibold text-muted-foreground uppercase">{t('dashboard.key_points')}</p>
                                   <ul className="mt-1 space-y-1">
                                     {aiAnalysis.keyPoints?.map((p: string, i: number) => (
-                                      <li key={i} className="flex gap-2 text-xs text-zinc-400">
+                                      <li key={i} className="flex gap-2 text-xs text-muted-foreground">
                                         <span className="text-amber-500">•</span>
                                         {p}
                                       </li>
@@ -1584,23 +1758,23 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                   </ul>
                                 </div>
                                 <div className="flex gap-2">
-                                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
-                                    Type: {aiAnalysis.documentType}
+                                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                                    {t('dashboard.type_label')} {aiAnalysis.documentType}
                                   </span>
                                   <span className={`rounded-full px-2 py-0.5 text-[10px] ${
                                     aiAnalysis.sentiment === 'positive' ? 'bg-emerald-500/10 text-emerald-400' :
                                     aiAnalysis.sentiment === 'negative' ? 'bg-red-500/10 text-red-400' :
-                                    'bg-zinc-800 text-zinc-400'
+                                    'bg-muted text-muted-foreground'
                                   }`}>
                                     {aiAnalysis.sentiment}
                                   </span>
                                 </div>
                                 {aiAnalysis.recommendations?.length > 0 && (
                                   <div>
-                                    <p className="text-[10px] font-semibold text-zinc-500 uppercase">Recommendations</p>
+                                    <p className="text-[10px] font-semibold text-muted-foreground uppercase">{t('dashboard.recommendations')}</p>
                                     <ul className="mt-1 space-y-1">
                                       {aiAnalysis.recommendations.map((r: string, i: number) => (
-                                        <li key={i} className="flex gap-2 text-xs text-zinc-400">
+                                        <li key={i} className="flex gap-2 text-xs text-muted-foreground">
                                           <span className="text-blue-400">→</span>
                                           {r}
                                         </li>
@@ -1612,44 +1786,44 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                             )}
                           </div>
 
-                          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-                            <div className="border-b border-zinc-800 px-5 py-3 flex items-center justify-between">
-                              <p className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                          <div className="rounded-xl border border-border bg-card overflow-hidden">
+                            <div className="border-b border-border px-5 py-3 flex items-center justify-between">
+                              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                                 <FileSearch className="h-3.5 w-3.5 text-amber-500" />
-                                Edit Strategy Suggestions
+                                {t('dashboard.edit_strategy_suggestions')}
                               </p>
                               <button
                                 onClick={() => handleEditSuggestions(selectedDoc.id)}
                                 disabled={isLoadingSuggestions}
-                                className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-[10px] font-medium text-zinc-300 hover:border-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors"
+                                className="rounded-lg border border-border bg-muted px-3 py-1.5 text-[10px] font-medium text-foreground hover:border-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors"
                               >
-                                {isLoadingSuggestions ? 'Loading...' : 'Get Suggestions'}
+                                {isLoadingSuggestions ? t('dashboard.loading') : t('dashboard.get_suggestions')}
                               </button>
                             </div>
                             {isLoadingSuggestions && (
                               <div className="flex items-center justify-center py-8">
-                                <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-amber-500" />
+                                <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-amber-500" />
                               </div>
                             )}
                             {editSuggestions && !isLoadingSuggestions && (
                               <div className="px-5 py-4 space-y-3">
-                                <div className="rounded-lg bg-zinc-800 px-3 py-2">
-                                  <p className="text-[10px] text-zinc-500">Overall Strategy</p>
-                                  <p className="mt-0.5 text-xs text-zinc-300">{editSuggestions.overallStrategy}</p>
+                                <div className="rounded-lg bg-muted px-3 py-2">
+                                  <p className="text-[10px] text-muted-foreground">{t('dashboard.overall_strategy')}</p>
+                                  <p className="mt-0.5 text-xs text-foreground">{editSuggestions.overallStrategy}</p>
                                 </div>
                                 <div className="flex gap-2">
-                                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
-                                    Complexity: {editSuggestions.estimatedComplexity}
+                                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                                    {t('dashboard.complexity_label')} {editSuggestions.estimatedComplexity}
                                   </span>
                                 </div>
                                 {editSuggestions.suggestions?.length > 0 && (
                                   <div>
-                                    <p className="mb-2 text-[10px] font-semibold text-zinc-500 uppercase">Suggestions ({editSuggestions.suggestions.length})</p>
+                                    <p className="mb-2 text-[10px] font-semibold text-muted-foreground uppercase">{t('dashboard.suggestions')} ({editSuggestions.suggestions.length})</p>
                                     <div className="space-y-2">
                                       {editSuggestions.suggestions.map((s: any, i: number) => (
-                                        <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                                        <div key={i} className="rounded-lg border border-border bg-background p-3">
                                           <div className="flex items-center justify-between mb-1">
-                                            <p className="text-xs font-medium text-zinc-200">{s.section}</p>
+                                            <p className="text-xs font-medium text-foreground">{s.section}</p>
                                             <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
                                               s.priority === 'high' ? 'bg-red-500/10 text-red-400' :
                                               s.priority === 'medium' ? 'bg-amber-500/10 text-amber-400' :
@@ -1658,9 +1832,9 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                                               {s.priority}
                                             </span>
                                           </div>
-                                          <p className="text-[10px] text-zinc-500">Issue: {s.issue}</p>
-                                          <p className="mt-1 text-[10px] text-zinc-400">→ {s.suggestion}</p>
-                                          <p className="mt-0.5 text-[9px] text-zinc-600">{s.reason}</p>
+                                          <p className="text-[10px] text-muted-foreground">{t('dashboard.issue_label')} {s.issue}</p>
+                                          <p className="mt-1 text-[10px] text-muted-foreground">→ {s.suggestion}</p>
+                                          <p className="mt-0.5 text-[9px] text-muted-foreground">{s.reason}</p>
                                         </div>
                                       ))}
                                     </div>
@@ -1670,65 +1844,65 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                             )}
                           </div>
 
-                          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-                            <div className="border-b border-zinc-800 px-5 py-3">
-                              <p className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                          <div className="rounded-xl border border-border bg-card overflow-hidden">
+                            <div className="border-b border-border px-5 py-3">
+                              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                                 💬 AI Chat
                               </p>
                             </div>
-                            <div className="flex flex-col gap-2 bg-zinc-950 p-4 min-h-[180px] max-h-[240px] overflow-y-auto">
+                            <div className="flex flex-col gap-2 bg-background p-4 min-h-[180px] max-h-[240px] overflow-y-auto">
                               {chatHistory.length === 0 ? (
-                                <p className="pt-6 text-center text-xs italic text-zinc-600">Đặt câu hỏi về tài liệu...</p>
+                                <p className="pt-6 text-center text-xs italic text-muted-foreground">{t('dashboard.chat_placeholder')}</p>
                               ) : (
                                 chatHistory.map((h, i) => (
                                   <div key={i} className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
                                     h.role === 'user'
                                       ? 'self-end bg-amber-500/10 text-amber-200'
-                                      : 'self-start bg-zinc-800 text-zinc-300'
+                                      : 'self-start bg-muted text-foreground'
                                   }`}>
                                     {h.content}
                                   </div>
                                 ))
                               )}
-                              {isChatLoading && <p className="self-start text-xs italic text-zinc-600">AI đang trả lời...</p>}
+                              {isChatLoading && <p className="self-start text-xs italic text-muted-foreground">{t('dashboard.ai_responding')}</p>}
                             </div>
-                            <form onSubmit={handleSendChatMessage} className="flex gap-2 border-t border-zinc-800 p-3">
+                            <form onSubmit={handleSendChatMessage} className="flex gap-2 border-t border-border p-3">
                               <input
                                 type="text"
                                 value={chatMessage}
                                 onChange={e => setChatMessage(e.target.value)}
-                                placeholder="Nhập câu hỏi..."
+                                placeholder={t('dashboard.enter_question')}
                                 disabled={isChatLoading || !selectedDoc}
-                                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-amber-500 disabled:opacity-50 transition-colors"
+                                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-amber-500 disabled:opacity-50 transition-colors"
                               />
                               <button type="submit" disabled={isChatLoading || !selectedDoc}
                                 className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-50 transition-colors">
-                                Gửi
+                                {t('dashboard.send')}
                               </button>
                             </form>
                           </div>
 
-                          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-                            <div className="border-b border-zinc-800 px-5 py-3 flex items-center justify-between">
-                              <p className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                          <div className="rounded-xl border border-border bg-card overflow-hidden">
+                            <div className="border-b border-border px-5 py-3 flex items-center justify-between">
+                              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                                 <Key className="h-3.5 w-3.5 text-amber-500" />
-                                Key Clauses
+                                {t('dashboard.key_clauses')}
                               </p>
                               <button onClick={() => handleExtractClauses(selectedDoc.id)} disabled={isLoadingClauses}
-                                className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-[10px] font-medium text-zinc-300 hover:border-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors">
-                                {isLoadingClauses ? 'Extracting...' : 'Extract'}
+                                className="rounded-lg border border-border bg-muted px-3 py-1.5 text-[10px] font-medium text-foreground hover:border-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors">
+                                {isLoadingClauses ? t('dashboard.extracting') : t('dashboard.extract')}
                               </button>
                             </div>
                             {isLoadingClauses && (
                               <div className="flex items-center justify-center py-8">
-                                <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-amber-500" />
+                                <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-amber-500" />
                               </div>
                             )}
                             {extractedClauses.length > 0 && !isLoadingClauses && (
                               <div className="px-5 py-4">
                                 <ul className="space-y-1.5">
                                   {extractedClauses.map((c, i) => (
-                                    <li key={i} className="flex gap-2 text-xs text-zinc-400">
+                                    <li key={i} className="flex gap-2 text-xs text-muted-foreground">
                                       <span className="font-medium text-amber-500">{i + 1}.</span>
                                       {c}
                                     </li>
@@ -1737,8 +1911,8 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                               </div>
                             )}
                             {extractedClauses.length === 0 && !isLoadingClauses && (
-                              <div className="px-5 py-4 text-xs text-zinc-600">
-                                Nhấn "Extract" để trích xuất điều khoản chính
+                              <div className="px-5 py-4 text-xs text-muted-foreground">
+                                {t('dashboard.extract_hint')}
                               </div>
                             )}
                           </div>
@@ -1748,37 +1922,37 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
                   )}
 
                   {sidebarSubTab === 'compare' && (
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-                      <h3 className="mb-6 text-lg font-semibold text-zinc-100 flex items-center gap-2">
+                    <div className="rounded-xl border border-border bg-card p-6">
+                      <h3 className="mb-6 text-lg font-semibold text-foreground flex items-center gap-2">
                         <Scale className="h-5 w-5 text-amber-500" />
-                        So sánh tài liệu
+                        {t('dashboard.compare_title')}
                       </h3>
                       <div className="mb-4 grid grid-cols-2 gap-4">
                         <div>
-                          <label className="mb-1.5 block text-xs font-medium text-zinc-400">Tài liệu 1</label>
+                          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('dashboard.document_1')}</label>
                           <select value={compareId1} onChange={e => setCompareId1(e.target.value)}
-                            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-500 transition-colors">
-                            <option value="">Chọn...</option>
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-amber-500 transition-colors">
+                            <option value="">{t('dashboard.select_option')}</option>
                             {documents.map(d => (<option key={d.id} value={d.id}>{d.title}</option>))}
                           </select>
                         </div>
                         <div>
-                          <label className="mb-1.5 block text-xs font-medium text-zinc-400">Tài liệu 2</label>
+                          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('dashboard.document_2')}</label>
                           <select value={compareId2} onChange={e => setCompareId2(e.target.value)}
-                            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-500 transition-colors">
-                            <option value="">Chọn...</option>
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-amber-500 transition-colors">
+                            <option value="">{t('dashboard.select_option')}</option>
                             {documents.map(d => (<option key={d.id} value={d.id}>{d.title}</option>))}
                           </select>
                         </div>
                       </div>
                       <button onClick={handleCompare} disabled={isComparing || !compareId1 || !compareId2}
                         className="w-full rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-40 transition-colors">
-                        {isComparing ? 'Đang so sánh...' : 'So sánh'}
+                        {isComparing ? t('dashboard.comparing') : t('dashboard.compare')}
                       </button>
                       {compareResult && (
-                        <div className="mt-6 border-t border-zinc-800 pt-6">
-                          <h4 className="mb-3 text-sm font-semibold text-zinc-300">Kết quả:</h4>
-                          <div className="whitespace-pre-line rounded-lg border border-zinc-800 bg-zinc-950 p-5 text-sm leading-relaxed text-zinc-300">
+                        <div className="mt-6 border-t border-border pt-6">
+                          <h4 className="mb-3 text-sm font-semibold text-foreground">{t('dashboard.result_label')}</h4>
+                          <div className="whitespace-pre-line rounded-lg border border-border bg-background p-5 text-sm leading-relaxed text-foreground">
                             {compareResult}
                           </div>
                         </div>
@@ -1789,44 +1963,44 @@ export function Dashboard({ token, walletAddress }: DashboardProps) {
 
                 <div className="space-y-6">
                   {selectedDoc ? (
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-                      <div className="border-b border-zinc-800 px-5 py-4">
-                        <p className="truncate text-sm font-semibold text-zinc-100">{selectedDoc.title}</p>
-                        <p className="mt-1 truncate font-mono text-[10px] text-zinc-600">CID: {selectedDoc.cid}</p>
+                    <div className="rounded-xl border border-border bg-card overflow-hidden">
+                      <div className="border-b border-border px-5 py-4">
+                        <p className="truncate text-sm font-semibold text-foreground">{selectedDoc.title}</p>
+                        <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">CID: {selectedDoc.cid}</p>
                       </div>
-                      <div className="flex flex-wrap gap-2 border-b border-zinc-800 px-5 py-3">
+                      <div className="flex flex-wrap gap-2 border-b border-border px-5 py-3">
                         {!selectedDoc.is_onchain ? (
                           <button onClick={() => handleStoreOnChain(selectedDoc)}
                             className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-amber-400 transition-colors">
-                            <Link2 className="h-3.5 w-3.5" /> Lưu Proof On-Chain
+                            <Link2 className="h-3.5 w-3.5" /> {t('dashboard.save_proof_onchain')}
                           </button>
                         ) : (
                           <span className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400">
-                            ✓ Đã lưu On-Chain
+                            ✓ {t('dashboard.saved_onchain')}
                           </span>
                         )}
                         <button onClick={() => setShareDialogDoc(selectedDoc)}
-                          className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-amber-500 hover:text-amber-400 transition-colors">
-                          <Share2 className="h-3.5 w-3.5" /> Share
+                          className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:border-amber-500 hover:text-amber-400 transition-colors">
+                          <Share2 className="h-3.5 w-3.5" /> {t('dashboard.share')}
                         </button>
                       </div>
                       {selectedDoc.ai_summary && (
                         <div className="px-5 py-4">
-                          <p className="mb-1 text-[10px] font-semibold text-zinc-500 uppercase">AI Summary</p>
-                          <p className="text-xs leading-relaxed text-zinc-400">{selectedDoc.ai_summary}</p>
+                          <p className="mb-1 text-[10px] font-semibold text-muted-foreground uppercase">AI Summary</p>
+                          <p className="text-xs leading-relaxed text-muted-foreground">{selectedDoc.ai_summary}</p>
                         </div>
                       )}
                       {selectedDoc.tags && selectedDoc.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 px-5 pb-4">
                           {selectedDoc.tags.map((t, i) => (
-                            <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">#{t}</span>
+                            <span key={i} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">#{t}</span>
                           ))}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900">
-                      <p className="px-6 text-center text-xs text-zinc-600">Chọn một tài liệu<br />để phân tích</p>
+                    <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-border bg-card">
+                      <p className="px-6 text-center text-xs text-muted-foreground">{t('dashboard.select_doc_to_analyze_title')}<br />{t('dashboard.select_doc_to_analyze_subtitle')}</p>
                     </div>
                   )}
                 </div>

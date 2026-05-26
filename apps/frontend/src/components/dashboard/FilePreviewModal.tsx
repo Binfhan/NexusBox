@@ -1,4 +1,5 @@
 import { X, FileText, Image as ImageIcon, HardDrive, Calendar, Tag, Shield, Link2, FolderOpen, ChevronRight, Trash2 } from 'lucide-react'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 interface Document {
   id: string
@@ -64,24 +65,24 @@ function FolderTree({ docs, currentPath }: { docs: Document[]; currentPath: stri
   return (
     <div className="space-y-0.5">
       {filesHere.map(f => (
-        <div key={f.id} className="flex items-center gap-2 rounded-lg bg-zinc-800/50 px-3 py-2 text-xs text-zinc-300">
+        <div key={f.id} className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs text-foreground">
           {f.mime_type?.startsWith('image/') ? <ImageIcon className="h-3.5 w-3.5 text-blue-400" /> : <FileText className="h-3.5 w-3.5 text-amber-400" />}
           <span className="truncate flex-1">{f.title}</span>
-          <span className="text-zinc-600">{f.file_size ? formatStorage(f.file_size) : ''}</span>
+          <span className="text-muted-foreground">{f.file_size ? formatStorage(f.file_size) : ''}</span>
         </div>
       ))}
       {Array.from(subfolders).sort().map(folderName => (
         <div key={folderName}>
           <button
             onClick={() => toggleFolder(folderName)}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors"
           >
             <ChevronRight className={`h-3 w-3 transition-transform ${openFolders.has(folderName) ? 'rotate-90' : ''}`} />
             <FolderOpen className="h-3.5 w-3.5 text-amber-500" />
             {folderName}
           </button>
           {openFolders.has(folderName) && (
-            <div className="ml-4 border-l border-zinc-800 pl-3">
+            <div className="ml-4 border-l border-border pl-3">
               <FolderTree docs={docs} currentPath={prefix + folderName} />
             </div>
           )}
@@ -94,6 +95,7 @@ function FolderTree({ docs, currentPath }: { docs: Document[]; currentPath: stri
 import React from 'react'
 
 export function FilePreviewModal({ doc, allDocs = [], onClose, onDelete }: FilePreviewModalProps) {
+  const { t } = useLanguage()
   const folderDocs = allDocs.filter(d =>
     d.folder_group && d.folder_group === doc.folder_group &&
     d.relative_path && d.relative_path.length > 0
@@ -111,11 +113,11 @@ export function FilePreviewModal({ doc, allDocs = [], onClose, onDelete }: FileP
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
       <div
-        className="mx-4 flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+        className="mx-4 flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl border border-border bg-card shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3 min-w-0">
             {isImage ? (
               <ImageIcon className="h-5 w-5 text-blue-400 flex-shrink-0" />
@@ -125,21 +127,21 @@ export function FilePreviewModal({ doc, allDocs = [], onClose, onDelete }: FileP
               <FileText className="h-5 w-5 text-amber-400 flex-shrink-0" />
             )}
             <div className="min-w-0">
-              <h2 className="truncate text-base font-semibold text-zinc-100">{doc.title}</h2>
+              <h2 className="truncate text-base font-semibold text-foreground">{doc.title}</h2>
               {doc.relative_path && (
-                <p className="truncate text-[10px] text-zinc-600">{doc.relative_path}</p>
+                <p className="truncate text-[10px] text-muted-foreground">{doc.relative_path}</p>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {onDelete && (
               <button onClick={() => { onDelete(doc); onClose() }}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
-                title="Xóa tài liệu">
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                title={t('preview.delete')}>
                 <Trash2 className="h-4 w-4" />
               </button>
             )}
-            <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 transition-colors flex-shrink-0">
+            <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors flex-shrink-0">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -149,7 +151,7 @@ export function FilePreviewModal({ doc, allDocs = [], onClose, onDelete }: FileP
         <div className="flex-1 overflow-y-auto p-6">
           {/* Preview area */}
           {isImage && base64Data ? (
-            <div className="mb-6 flex items-center justify-center rounded-xl bg-zinc-950 p-4">
+            <div className="mb-6 flex items-center justify-center rounded-xl bg-background p-4">
               <img
                 src={`data:${doc.mime_type};base64,${base64Data}`}
                 alt={doc.title}
@@ -157,7 +159,7 @@ export function FilePreviewModal({ doc, allDocs = [], onClose, onDelete }: FileP
               />
             </div>
           ) : isPdf && base64Data ? (
-            <div className="mb-6 rounded-xl bg-zinc-950 overflow-hidden" style={{ height: '50vh' }}>
+            <div className="mb-6 rounded-xl bg-background overflow-hidden" style={{ height: '50vh' }}>
               <embed
                 src={`data:application/pdf;base64,${base64Data}`}
                 type="application/pdf"
@@ -166,39 +168,39 @@ export function FilePreviewModal({ doc, allDocs = [], onClose, onDelete }: FileP
             </div>
           ) : isFolder ? (
             <div className="mb-6">
-              <p className="mb-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Folder contents</p>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 max-h-[40vh] overflow-y-auto">
+              <p className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Folder contents</p>
+              <div className="rounded-xl border border-border bg-background p-4 max-h-[40vh] overflow-y-auto">
                 <FolderTree docs={allDocs} currentPath={folderRootName} />
               </div>
             </div>
           ) : (
-            <div className="mb-6 flex items-center justify-center rounded-xl bg-zinc-950 p-12">
+            <div className="mb-6 flex items-center justify-center rounded-xl bg-background p-12">
               <div className="text-center">
                 <FileText className="mx-auto mb-3 h-12 w-12 text-zinc-700" />
-                <p className="text-sm text-zinc-500">Không có bản xem trước cho loại tệp này</p>
+                <p className="text-sm text-muted-foreground">Không có bản xem trước cho loại tệp này</p>
               </div>
             </div>
           )}
 
           {/* Metadata */}
-          <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950 p-5">
-            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Thông tin tệp</p>
+          <div className="space-y-3 rounded-xl border border-border bg-background p-5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Thông tin tệp</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-[10px] text-zinc-600">Loại</p>
-                <p className="text-xs text-zinc-300">{doc.mime_type || 'Không xác định'}</p>
+                <p className="text-[10px] text-muted-foreground">Loại</p>
+                <p className="text-xs text-foreground">{doc.mime_type || 'Không xác định'}</p>
               </div>
               <div>
-                <p className="text-[10px] text-zinc-600">Kích thước</p>
-                <p className="text-xs text-zinc-300">{doc.file_size ? formatStorage(doc.file_size) : '-'}</p>
+                <p className="text-[10px] text-muted-foreground">Kích thước</p>
+                <p className="text-xs text-foreground">{doc.file_size ? formatStorage(doc.file_size) : '-'}</p>
               </div>
               <div>
-                <p className="text-[10px] text-zinc-600">Ngày tạo</p>
-                <p className="text-xs text-zinc-300">{new Date(doc.created_at).toLocaleDateString('vi-VN')}</p>
+                <p className="text-[10px] text-muted-foreground">Ngày tạo</p>
+                <p className="text-xs text-foreground">{new Date(doc.created_at).toLocaleDateString('vi-VN')}</p>
               </div>
               <div>
-                <p className="text-[10px] text-zinc-600">CID</p>
-                <p className="truncate font-mono text-[10px] text-zinc-400">{doc.cid}</p>
+                <p className="text-[10px] text-muted-foreground">CID</p>
+                <p className="truncate font-mono text-[10px] text-muted-foreground">{doc.cid}</p>
               </div>
             </div>
 
@@ -222,15 +224,15 @@ export function FilePreviewModal({ doc, allDocs = [], onClose, onDelete }: FileP
 
             {doc.ai_summary && (
               <div className="pt-2">
-                <p className="text-[10px] text-zinc-600 mb-1">AI Summary</p>
-                <p className="text-xs leading-relaxed text-zinc-400">{doc.ai_summary}</p>
+                <p className="text-[10px] text-muted-foreground mb-1">AI Summary</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">{doc.ai_summary}</p>
               </div>
             )}
 
             {doc.tags && doc.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-2">
                 {doc.tags.map((t, i) => (
-                  <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">#{t}</span>
+                  <span key={i} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">#{t}</span>
                 ))}
               </div>
             )}

@@ -1,4 +1,5 @@
 import { FileText, CheckCircle2, HardDrive, Crown } from 'lucide-react'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 interface StatCardProps {
   icon: React.ReactNode
@@ -16,16 +17,16 @@ function StatCard({ icon, label, value, sublabel, color = 'amber' }: StatCardPro
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex items-start justify-between gap-4">
+    <div className="bg-card border border-border rounded-xl p-5 flex items-start justify-between gap-4">
       <div className="flex-1">
-        <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-widest">
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
           {label}
         </p>
-        <p className="mt-2 text-3xl font-semibold text-zinc-100">
+        <p className="mt-2 text-3xl font-semibold text-foreground">
           {value}
         </p>
         {sublabel && (
-          <p className="mt-1 text-[10px] text-zinc-600">{sublabel}</p>
+          <p className="mt-1 text-[10px] text-muted-foreground">{sublabel}</p>
         )}
       </div>
       <div className={`rounded-lg p-2.5 ${iconBg[color]}`}>
@@ -44,31 +45,32 @@ interface StatsCardsProps {
 }
 
 export function StatsCards({ totalDocs, verifiedDocs, storageUsed, storageLimit, planName }: StatsCardsProps) {
+  const { t } = useLanguage()
   return (
     <div className="grid gap-4 sm:grid-cols-4">
       <StatCard
         icon={<FileText className="h-5 w-5" />}
-        label="Total Documents"
+        label={t('stats.total_documents')}
         value={totalDocs}
         color="blue"
       />
       <StatCard
         icon={<CheckCircle2 className="h-5 w-5" />}
-        label="Verified by AI"
+        label={t('stats.verified_by_ai')}
         value={verifiedDocs}
         color="green"
       />
       <StatCard
         icon={<HardDrive className="h-5 w-5" />}
-        label="Storage Used"
+        label={t('stats.storage_used')}
         value={storageUsed}
-        sublabel={storageLimit ? `Limit: ${storageLimit}` : undefined}
+        sublabel={storageLimit ? `${t('stats.storage_limit')} ${storageLimit}` : undefined}
         color="amber"
       />
       <StatCard
         icon={<Crown className="h-5 w-5" />}
-        label="Plan"
-        value={planName ? planName.charAt(0).toUpperCase() + planName.slice(1) : 'Free'}
+        label={t('stats.plan')}
+        value={planName ? planName.charAt(0).toUpperCase() + planName.slice(1) : t('stats.plan_free')}
         color="amber"
       />
     </div>

@@ -25,7 +25,7 @@ export function HighlightSection() {
           <h2 className="text-4xl font-bold text-white">
             Quyền riêng tư là ưu tiên hàng đầu
           </h2>
-          <p className="text-base text-zinc-300">
+          <p className="text-base text-foreground">
             Chúng tôi không bao giờ có thể truy cập tài liệu của bạn.
             Chỉ có bạn nắm giữ chìa khóa duy nhất cho kho lưu trữ của mình.
           </p>

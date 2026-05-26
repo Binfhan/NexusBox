@@ -36,6 +36,41 @@ export async function getProfile(token: string): Promise<any> {
   return res.json();
 }
 
+export async function updateProfile(token: string, data: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/auth/profile`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update profile');
+  return res.json();
+}
+
+export async function uploadAvatar(token: string, avatarUrl: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/auth/profile/avatar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ avatar_url: avatarUrl }),
+  });
+  if (!res.ok) throw new Error('Failed to upload avatar');
+  return res.json();
+}
+
+export async function deleteAvatar(token: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/auth/profile/avatar`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Failed to delete avatar');
+  return res.json();
+}
+
+export async function resolveEns(address: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/auth/resolve-ens/${address}`);
+  if (!res.ok) return { ens_name: null };
+  return res.json();
+}
+
 export async function uploadDocument(token: string, file: File, relativePath?: string, folderGroup?: string, parentFolderId?: string): Promise<any> {
   const formData = new FormData();
   formData.append('file', file);

@@ -39,42 +39,42 @@ export function CommandPalette({ onAction }: CommandPaletteProps) {
       onClick={() => setOpen(false)}
     >
       <div
-        className="w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden"
+        className="w-full max-w-md bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
-          <span className="text-zinc-500 text-sm">⌘</span>
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+          <span className="text-muted-foreground text-sm">⌘</span>
           <input
             autoFocus
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search actions..."
-            className="flex-1 bg-transparent text-sm text-zinc-200 outline-none placeholder:text-zinc-600"
+            className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
           <button onClick={() => setOpen(false)}>
-            <X className="h-4 w-4 text-zinc-500 hover:text-zinc-200" />
+            <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
           </button>
         </div>
 
         {/* Results */}
         <div className="py-2">
           {filtered.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-zinc-600">No actions found.</p>
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">No actions found.</p>
           ) : (
             <div>
-              <p className="px-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+              <p className="px-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Actions
               </p>
               {filtered.map(action => (
                 <button
                   key={action.id}
                   onClick={() => { onAction(action.id); setOpen(false); setQuery('') }}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-amber-400 transition-colors"
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-accent hover:text-amber-400 transition-colors"
                 >
-                  <span className="text-zinc-500">{action.icon}</span>
+                  <span className="text-muted-foreground">{action.icon}</span>
                   {action.label}
-                  <span className="ml-auto text-[10px] border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-600">
+                  <span className="ml-auto text-[10px] border border-border rounded px-1.5 py-0.5 text-muted-foreground">
                     {action.shortcut}
                   </span>
                 </button>

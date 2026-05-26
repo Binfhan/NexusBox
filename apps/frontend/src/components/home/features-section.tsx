@@ -14,7 +14,7 @@ export function FeaturesSection() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-4xl font-bold text-white">Tính năng bảo mật tối ưu</h2>
-          <p className="text-base text-zinc-400">
+          <p className="text-base text-muted-foreground">
             Giải pháp lưu trữ tài liệu thế hệ mới cho kỷ nguyên số.
           </p>
         </div>
@@ -28,7 +28,7 @@ export function FeaturesSection() {
         {features.map((feature) => (
           <div
             key={feature.title}
-            className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl
+            className="bg-card border border-border p-6 rounded-xl
                        flex flex-col gap-4
                        hover:border-amber-500/50 transition-colors
                        group"
@@ -49,7 +49,7 @@ export function FeaturesSection() {
             </div>
             <div>
               <h3 className="text-xl font-bold mb-1 text-white">{feature.title}</h3>
-              <p className="text-base text-zinc-400">{feature.description}</p>
+              <p className="text-base text-muted-foreground">{feature.description}</p>
             </div>
           </div>
         ))}

@@ -69,24 +69,24 @@ export function DocumentsTable({
   })
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-800">
-              <th className="text-left px-4 py-3 text-[11px] font-medium text-zinc-500 uppercase tracking-wider w-72">
+            <tr className="border-b border-border">
+              <th className="text-left px-4 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider w-72">
                 Document Name
               </th>
-              <th className="text-left px-4 py-3 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+              <th className="text-left px-4 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 Type
               </th>
-              <th className="text-left px-4 py-3 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+              <th className="text-left px-4 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 Status
               </th>
-              <th className="text-left px-4 py-3 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+              <th className="text-left px-4 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 Date
               </th>
-              <th className="text-right px-4 py-3 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+              <th className="text-right px-4 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -94,7 +94,7 @@ export function DocumentsTable({
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center py-12 text-zinc-600 text-sm">
+                <td colSpan={5} className="text-center py-12 text-muted-foreground text-sm">
                   No documents match the selected filter
                 </td>
               </tr>
@@ -111,21 +111,21 @@ export function DocumentsTable({
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-zinc-500 flex-shrink-0" />
-                      <span className="font-medium text-zinc-200 truncate max-w-[220px]">
+                      <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span className="font-medium text-foreground truncate max-w-[220px]">
                         {doc.title}
                       </span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-xs text-zinc-500 capitalize">
+                    <span className="text-xs text-muted-foreground capitalize">
                       {getDocType(doc.title)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     {getStatusBadge(doc)}
                   </td>
-                  <td className="px-4 py-3 text-xs text-zinc-500">
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
                     {new Date(doc.created_at).toLocaleDateString('vi-VN')}
                   </td>
                   <td className="px-4 py-3">
@@ -145,20 +145,20 @@ export function DocumentsTable({
                       <button
                         title="View"
                         onClick={() => onSelect(doc)}
-                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-zinc-700 text-zinc-400 transition-colors"
+                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-zinc-700 text-muted-foreground transition-colors"
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
                       <button
                         title="Share"
-                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-zinc-700 text-zinc-400 transition-colors"
+                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-zinc-700 text-muted-foreground transition-colors"
                       >
                         <Share2 className="h-3.5 w-3.5" />
                       </button>
                       <button
                         title="Delete"
                         onClick={() => onDelete(doc.id)}
-                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-red-500/10 text-zinc-400 hover:text-red-400 transition-colors"
+                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

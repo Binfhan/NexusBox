@@ -1,6 +1,3 @@
-import { Header } from '@/components/common/Header'
-import { Footer } from '@/components/common/Footer'
-
 import { HeroSection } from '@/components/home/hero-section'
 import { FeaturesSection } from '@/components/home/features-section'
 import { HighlightSection } from '@/components/home/highlight-section'
@@ -10,21 +7,21 @@ interface HomeProps {
   walletAddress: string | null
   onConnect: () => void
   onDisconnect: () => void
+  avatarUrl?: string | null
+  displayName?: string | null
+  ensName?: string | null
 }
 
 export default function Home({
   walletAddress,
   onConnect,
   onDisconnect,
+  avatarUrl,
+  displayName,
+  ensName,
 }: HomeProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
-
-      <Header
-        walletAddress={walletAddress}
-        onConnect={onConnect}
-        onDisconnect={onDisconnect}
-      />
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
 
       <main className="flex-1">
         {/* HERO */}
@@ -58,8 +55,6 @@ export default function Home({
           <StatsSection />
         </section>
       </main>
-
-      <Footer />
     </div>
   )
 }

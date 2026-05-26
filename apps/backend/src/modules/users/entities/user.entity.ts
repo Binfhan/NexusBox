@@ -25,6 +25,36 @@ export class User {
   @Column({ type: 'bigint', default: 0 })
   storage_used: number;
 
+  @Column({ type: 'varchar', nullable: true })
+  avatar_url: string | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'custom' })
+  avatar_type: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  display_name: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  bio: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  ens_name: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  lens_handle: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  twitter_url: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  github_url: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  website_url: string | null;
+
+  @Column({ type: 'boolean', default: true })
+  is_profile_public: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 }

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -94,7 +94,97 @@ export class AuthService {
     return user ? user.wallet_address : null;
   }
 
-  async getMyProfile(walletAddress: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { wallet_address: walletAddress.toLowerCase() } });
+  async getMyProfile(walletAddress: string): Promise<any> {
+    const user = await this.usersRepository.findOne({
+      where: { wallet_address: walletAddress.toLowerCase() },
+      relations: ['plan'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return {
+      walletAddress: user.wallet_address,
+      userId: user.user_id,
+      displayName: user.display_name || '',
+      bio: user.bio || '',
+      avatarUrl: user.avatar_url || null,
+      avatarType: user.avatar_type || 'custom',
+      ensName: user.ens_name || null,
+      lensHandle: user.lens_handle || null,
+      twitterUrl: user.twitter_url || '',
+      githubUrl: user.github_url || '',
+      websiteUrl: user.website_url || '',
+      isProfilePublic: user.is_profile_public,
+      plan: user.plan ? {
+        name: user.plan.name,
+        maxBytes: Number(user.plan.max_bytes),
+        maxDocs: Number(user.plan.max_docs),
+      } : { name: 'free', maxBytes: 209715200, maxDocs: 50 },
+      storageLimit: Number(user.storage_limit),
+      storageUsed: Number(user.storage_used),
+      joinedAt: user.created_at,
+    };
+  }
+
+  async updateProfile(walletAddress: string, dto: any): Promise<any> {
+    const user = await this.usersRepository.findOne({ where: { wallet_address: walletAddress.toLowerCase() } });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (dto.display_name !== undefined) user.display_name = dto.display_name;
+    if (dto.bio !== undefined) user.bio = dto.bio;
+    if (dto.twitter_url !== undefined) user.twitter_url = dto.twitter_url;
+    if (dto.github_url !== undefined) user.github_url = dto.github_url;
+    if (dto.website_url !== undefined) user.website_url = dto.website_url;
+    if (dto.is_profile_public !== undefined) user.is_profile_public = dto.is_profile_public;
+
+    await this.usersRepository.save(user);
+    return this.getMyProfile(walletAddress);
+  }
+
+  async updateAvatar(walletAddress: string, avatarUrl: string): Promise<any> {
+    const user = await this.usersRepository.findOne({ where: { wallet_address: walletAddress.toLowerCase() } });
+    if (!user) throw new NotFoundException('User not found');
+    user.avatar_url = avatarUrl;
+    user.avatar_type = 'custom';
+    await this.usersRepository.save(user);
+    return { avatar_url: avatarUrl, avatar_type: 'custom' };
+  }
+
+  async deleteAvatar(walletAddress: string): Promise<any> {
+    const user = await this.usersRepository.findOne({ where: { wallet_address: walletAddress.toLowerCase() } });
+    if (!user) throw new NotFoundException('User not found');
+    user.avatar_url = null;
+    user.avatar_type = 'blockie';
+    await this.usersRepository.save(user);
+    return { avatar_url: null, avatar_type: 'blockie' };
+  }
+
+  async resolveEns(address: string): Promise<string | null> {
+    try {
+      const provider = new ethers.JsonRpcProvider(
+        process.env.ETHEREUM_RPC_URL || 'https://ethereum-rpc.publicnode.com'
+      );
+      const ensName = await provider.lookupAddress(address);
+      return ensName || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getPublicProfile(userId: number): Promise<any | null> {
+    const user = await this.usersRepository.findOne({
+      where: { user_id: userId, is_profile_public: true },
+      relations: ['plan'],
+    });
+    if (!user) return null;
+    return {
+      walletAddress: user.wallet_address,
+      displayName: user.display_name || '',
+      bio: user.bio || '',
+      avatarUrl: user.avatar_url || null,
+      ensName: user.ens_name || null,
+      twitterUrl: user.twitter_url || '',
+      githubUrl: user.github_url || '',
+      websiteUrl: user.website_url || '',
+      joinedAt: user.created_at,
+    };
   }
 }

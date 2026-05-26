@@ -23,9 +23,9 @@ export function StatsSection() {
   return (
     <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {stats.map((stat) => (
-        <div key={stat.label} className="p-6 bg-zinc-900 border border-zinc-800 rounded-xl text-center">
+        <div key={stat.label} className="p-6 bg-card border border-border rounded-xl text-center">
           <p className="text-4xl font-bold text-amber-500">{stat.number}</p>
-          <p className="text-sm text-zinc-400">{stat.label}</p>
+          <p className="text-sm text-muted-foreground">{stat.label}</p>
         </div>
       ))}
     </section>

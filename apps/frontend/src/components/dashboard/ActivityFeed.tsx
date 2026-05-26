@@ -44,10 +44,10 @@ function ActivityIcon({ type }: { type: string }) {
 
 export function ActivityFeed({ activities = defaultActivities }: ActivityFeedProps) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+    <div className="bg-card border border-border rounded-xl p-5">
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-zinc-100">Recent Activity</h3>
-        <p className="text-xs text-zinc-500">On-chain events</p>
+        <h3 className="text-sm font-semibold text-foreground">Recent Activity</h3>
+        <p className="text-xs text-muted-foreground">On-chain events</p>
       </div>
 
       <div className="space-y-1">
@@ -55,11 +55,11 @@ export function ActivityFeed({ activities = defaultActivities }: ActivityFeedPro
           <div key={item.id} className="flex gap-3">
             {/* Timeline line + icon */}
             <div className="relative flex flex-col items-center">
-              <div className="z-10 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-zinc-800 border border-zinc-700 text-amber-500">
+              <div className="z-10 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted border border-border text-amber-500">
                 <ActivityIcon type={item.type} />
               </div>
               {index < activities.length - 1 && (
-                <div className="mt-1 h-6 w-px bg-zinc-800" />
+                <div className="mt-1 h-6 w-px bg-muted" />
               )}
             </div>
 
@@ -67,10 +67,10 @@ export function ActivityFeed({ activities = defaultActivities }: ActivityFeedPro
             <div className="flex-1 pt-0.5 pb-4">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-xs font-medium text-zinc-200">{item.title}</p>
-                  <p className="text-xs text-zinc-500 mt-0.5">{item.description}</p>
+                  <p className="text-xs font-medium text-foreground">{item.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
                 </div>
-                <span className="text-[10px] text-zinc-600 whitespace-nowrap">
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                   {getTimeAgo(item.timestamp)}
                 </span>
               </div>
