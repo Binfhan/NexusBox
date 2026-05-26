@@ -17,7 +17,7 @@ import { PlanSeedService } from './database/seeds/plan-seed.service';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ envFilePath: ['../../.env', '.env'], isGlobal: true }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

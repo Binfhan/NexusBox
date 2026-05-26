@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export async function fetchNonce(walletAddress: string): Promise<string> {
   const res = await fetch(`${API_BASE}/auth/nonce`, {

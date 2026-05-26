@@ -1,7 +1,11 @@
 import { defineConfig } from "hardhat/config";
 import hardhatToolboxMochaEthers from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
 import hardhatIgnitionEthers from "@nomicfoundation/hardhat-ignition-ethers";
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+
+dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
+dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 function getAccounts(): `0x${string}`[] {
   const key = process.env.PRIVATE_KEY;

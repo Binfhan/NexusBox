@@ -22,11 +22,11 @@ export class BlockchainService implements OnModuleInit {
   }
 
   private initEthers() {
-    const rpcUrl = this.configService.get<string>('RPC_URL');
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
     const contractAddress = this.configService.get<string>('DOCVAULT_STORAGE_ADDRESS');
 
     if (!rpcUrl || !contractAddress) {
-      this.logger.warn('RPC_URL or DOCVAULT_STORAGE_ADDRESS not set. Blockchain sync is disabled.');
+      this.logger.warn('SEPOLIA_RPC_URL or DOCVAULT_STORAGE_ADDRESS not set. Blockchain sync is disabled.');
       return;
     }
 
